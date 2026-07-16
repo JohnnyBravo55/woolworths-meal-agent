@@ -150,10 +150,13 @@ Share a public webpage + access code **`usertest1`**. The free Render API may sl
 
 ### 2. Frontend on GitHub Pages
 
+GitHub Pages requires a **public** repo on the free plan (the access code still gates the app).
+
 1. Repo **Settings → Pages → Source: GitHub Actions**.
 2. Add Actions **secret** `EXPO_PUBLIC_API_URL` = your Render API URL (no trailing slash).
-3. If using a project site (`username.github.io/repo`), add Actions **variable** `EXPO_PUBLIC_BASE_URL` = `/repo`.
+3. For this project site, set Actions **variable** `EXPO_PUBLIC_BASE_URL` = `/woolworths-meal-agent`.
 4. Push to `main` (workflow: `.github/workflows/deploy-pages.yml`).
+5. Site URL: `https://johnnybravo55.github.io/woolworths-meal-agent/`
 
 ### 3. Tester instructions
 
