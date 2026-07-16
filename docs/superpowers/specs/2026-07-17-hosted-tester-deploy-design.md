@@ -15,9 +15,10 @@ Ship a shareable webpage for early testers to run the full product flow (prefere
 | Hosting cost | Free tier: static frontend + Render free API (may sleep / cold-start) |
 | Woolworths accounts | Each tester connects their own account |
 | Access control | Shared code `usertest1` (UI + API), not link-obscurity alone |
-| Repo | GitHub as source of truth and Pages deploy source |
-| Frontend | Expo web static export (`apps/mobile`) |
+| Repo | GitHub as source of truth and Pages deploy source (public on free plan so Pages works; access code still gates the app) |
+| Frontend | Expo web static export (`apps/mobile`) on GitHub Pages |
 | Backend | FastAPI (`meal-agent-api`) on Render free + persistent disk for `data/` |
+| Hosted Woolworths connect | Bookmarklet / paste Cookie header (iframe cannot read WW cookies) |
 
 ## Architecture
 
