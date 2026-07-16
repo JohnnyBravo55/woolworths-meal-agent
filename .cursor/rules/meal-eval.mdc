@@ -1,0 +1,99 @@
+---
+description: Meal-eval loop — run meal-eval N (plan → shop → trolley + audits + code fixes)
+alwaysApply: true
+---
+
+# Meal-eval agent loop
+
+When the user says **`run meal-eval N`** (case-insensitive; N is a positive integer), run the loop below immediately — no extra confirmation.
+
+Optional modifiers:
+
+- `run meal-eval N --chef <chef_id>` — pin one chef for every iteration
+- `run meal-eval N --shop-only` — stop after shop resolve (no trolley)
+
+Default is **with cart** (`--cart`): preferences → chef → meal plan → shop list → **add to Woolworths trolley**, then audit.
+
+Project root: `C:\Users\marku\Projects\woolworths-meal-agent`
+
+## Prerequisites (ensure before run 1)
+
+1. API on port 8000. If free, start with `MEAL_AGENT_DEV_PREMIUM=1`:
+   - PowerShell: `$env:MEAL_AGENT_DEV_PREMIUM = "1"; meal-agent-api` from project root (background).
+2. `OPENAI_API_KEY` available to the API process (repo `.env` is fine if the API loads it).
+3. **Woolworths login** for cart runs: `meal-agent login` (hard-stop if not connected).
+4. Do **not** start Vite/Expo for this loop.
+
+Cart runs **clear the Woolworths trolley before and after each iteration** (`POST /api/cart/clear`) so items do not accumulate.
+
+## Chef rotation
+
+`basic_sam` → `premium_elena` → `premium_kenji` → `premium_moana` → `premium_alex` → `premium_amara` → repeat  
+Run `i` uses chef `((i - 1) % 6)` unless `--chef` is set.
+
+## Per iteration `i` of `N`
+
+### 1. Customer harness
+
+```powershell
+cd C:\Users\marku\Projects\woolworths-meal-agent
+python scripts/meal_eval_run.py --run-index i --cart
+# shop-only:
+python scripts/meal_eval_run.py --run-index i --shop-only
+# pin chef:
+python scripts/meal_eval_run.py --run-index i --cart --chef <chef_id>
+```
+
+Artifacts under `output/meal-eval/run-{iii}-{chef_id}/`:
+
+- `profile.json`, `meal_plan.json`, `resolved_list.json`, `session_meta.json`
+- `cart_result.json` (cart runs)
+- `trolley_clear.json` (cart runs — post-run clear confirmation)
+- `audit_findings.json`, `audit_report.md`
+
+Exit codes: `0` = audit PASS, `2` = audit FAIL (soft), `1` = hard error.
+
+### 2. Cross-check agent
+
+Read `audit_report.md` + `audit_findings.json`. Confirm findings for:
+
+**(a) Within budget** — shop `total` vs `budget_nzd`  
+**(b) Trolley add** — all addable SKUs added (`success_count` ≥ addable count; `failure_count == 0`; no session lost). Offline/blocked items count as issues.  
+**(c) Products correct** — plan vs shop gaps, wrong-product matches, allergy/mandatory, coverage issues
+
+Summarize issues briefly for the user before fixing.
+
+### 3. Fix phase (before next iteration)
+
+On soft failures:
+
+1. Classify root cause (planner, shop flatten/repair, resolver match, cart API, budget trim, Woolworths session).
+2. Apply **code fixes** in the repo (not session-only heal).
+3. Add/adjust a focused pytest under `tests/` when reproducible without a full LLM/cart run.
+4. If API/server packages changed: restart `meal-agent-api` with `MEAL_AGENT_DEV_PREMIUM=1`.
+5. Continue to iteration `i+1`.
+
+On PASS: continue to `i+1` with no code changes required.
+
+### Hard stop (do not continue the loop)
+
+- API down / unreachable
+- Harness crash (exit `1`)
+- Premium 403 without `MEAL_AGENT_DEV_PREMIUM`
+- Premium plan generation failing due to missing OpenAI key
+- Woolworths not connected / session lost on a `--cart` run
+
+## After all N runs
+
+Report a short table: run index, chef, PASS/FAIL, issue count, budget/trolley/products checks, whether a code fix was applied after that run.
+
+## Out of scope
+
+- UI (Expo/Vite) clicking
+- Committing unless the user asks
+
+## References
+
+- Design: `docs/superpowers/specs/2026-07-16-meal-eval-agent-loop-design.md`
+- Harness: `scripts/meal_eval_run.py`
+- Baseline profile: `profiles/meal_eval_baseline.json`

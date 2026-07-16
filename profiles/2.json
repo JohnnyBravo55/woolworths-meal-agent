@@ -1,0 +1,19 @@
+{
+  "name": "2",
+  "household_size": 2,
+  "days": 7,
+  "dinner_count": 6,
+  "lunch_count": 4,
+  "snack_count": 2,
+  "allergies": "gluten",
+  "mandatory_items": "gluten free bread, milk",
+  "pantry_items": "soy sauce, olive oil, salt, pepper, lemon juice, onions, garlic",
+  "likes": "beef, japanese, chicken, oven meals ",
+  "dislikes": "lamb, pork, high sugar",
+  "budget_nzd": 250.0,
+  "store_name": "ferrymead",
+  "simplicity": "simple",
+  "brand_preference": "budget",
+  "chef_id": "basic_sam",
+  "lunch_mode": "original"
+}

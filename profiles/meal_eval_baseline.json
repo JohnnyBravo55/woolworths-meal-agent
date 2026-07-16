@@ -1,0 +1,20 @@
+{
+  "name": "meal_eval_baseline",
+  "household_size": 2,
+  "days": 7,
+  "dinner_count": 5,
+  "lunch_count": 2,
+  "snack_count": 0,
+  "allergies": "",
+  "mandatory_items": "milk",
+  "pantry_items": "salt, pepper, olive oil, garlic, onions",
+  "likes": "chicken, vegetables, pasta",
+  "dislikes": "lamb, organ meat",
+  "other_instructions": "",
+  "budget_nzd": 180.0,
+  "store_name": "",
+  "simplicity": "simple",
+  "brand_preference": "mixed",
+  "chef_id": "basic_sam",
+  "lunch_mode": "practical"
+}

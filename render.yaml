@@ -1,0 +1,26 @@
+# Blueprint: https://render.com/docs/blueprint-spec
+services:
+  - type: web
+    name: meal-agent-api
+    runtime: docker
+    plan: free
+    dockerfilePath: ./Dockerfile
+    dockerContext: .
+    healthCheckPath: /api/health
+    envVars:
+      - key: OPENAI_API_KEY
+        sync: false
+      - key: OPENAI_MODEL
+        value: gpt-4o-mini
+      - key: MEAL_AGENT_ACCESS_CODE
+        value: usertest1
+      - key: MEAL_AGENT_CORS_ORIGINS
+        sync: false
+      - key: MEAL_AGENT_COOKIE_SECURE
+        value: "1"
+      - key: MEAL_AGENT_RELOAD
+        value: "0"
+    disk:
+      name: meal-agent-data
+      mountPath: /app/data
+      sizeGB: 1

@@ -1,0 +1,17 @@
+{
+  "name": "GF 2 ppl japanese",
+  "household_size": 2,
+  "days": 7,
+  "dinner_count": 6,
+  "lunch_count": 7,
+  "snack_count": 5,
+  "allergies": "gluten",
+  "mandatory_items": "gluten free bread, milk",
+  "pantry_items": "soy sauce, olive oil, salt, pepper, lemon juice, onions, garlic",
+  "likes": "beef, japanese, chicken, oven meals ",
+  "dislikes": "lamb, pork, high sugar",
+  "budget_nzd": 250.0,
+  "store_name": "ferrymead",
+  "simplicity": "simple",
+  "brand_preference": "budget"
+}

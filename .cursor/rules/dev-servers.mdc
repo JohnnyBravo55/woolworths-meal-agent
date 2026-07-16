@@ -1,0 +1,65 @@
+---
+description: Dev server commands — reset pc, reset mobile, start pc, start mobile
+alwaysApply: true
+---
+
+# Dev server commands
+
+When the user says one of these phrases (case-insensitive), run the matching workflow immediately — no extra confirmation.
+
+Project root: `C:\Users\marku\Projects\woolworths-meal-agent`
+
+## Identify running services (Windows)
+
+| Service | Port | How to find |
+|---------|------|-------------|
+| API (`meal-agent-api`) | 8000 | `Get-NetTCPConnection -State Listen` on 8000; cmdline contains `meal-agent-api` |
+| Web (Vite) | 5173 | port 5173; cmdline contains `apps\web` or `vite` |
+| Mobile (Expo) | 8081 | port 8081; cmdline contains `apps\mobile` or `expo` |
+
+Stop a service: `Stop-Process -Id <pid> -Force` on the owning PID. Avoid `$pid` as loop variable (reserved in PowerShell).
+
+## `reset pc`
+
+Full restart for local PC web development (not mobile).
+
+1. Stop API (8000), Expo (8081), and Vite (5173) if running.
+2. Start API in background: `cd <root>; meal-agent-api`
+3. Start web in background: `cd <root>\apps\web; npm run dev`
+4. Confirm both are up; report:
+   - API: http://127.0.0.1:8000
+   - Web: http://localhost:5173
+
+## `reset mobile`
+
+Full restart for phone/Expo development (LAN, not tunnel unless user asks).
+
+1. Stop API (8000), Expo (8081), and Vite (5173) if running.
+2. Start API in background: `cd <root>; meal-agent-api`
+3. Resolve LAN IP (`Get-NetIPAddress` IPv4, not 127.* / 169.254.*, Wi-Fi/Ethernet).
+4. Start Expo in background from `apps\mobile`:
+   - `$env:EXPO_PUBLIC_API_URL = "http://<LAN_IP>:8000"` (fallback `http://127.0.0.1:8000`)
+   - `npx expo start --lan -c`
+5. Confirm API + Expo; report API URL, LAN IP, and Expo on 8081.
+
+## `start pc`
+
+Start PC stack only if not already running (first session start — do **not** stop existing processes).
+
+1. If port 8000 free → start `meal-agent-api` in background.
+2. If port 5173 free → start `npm run dev` in `apps\web` in background.
+3. Report what was started vs already running, with URLs.
+
+## `start mobile`
+
+Start mobile stack only if not already running (first session start — do **not** stop existing processes).
+
+1. If port 8000 free → start `meal-agent-api` in background.
+2. If port 8081 free → start Expo with `EXPO_PUBLIC_API_URL` (LAN IP) and `npx expo start --lan -c` in `apps\mobile`.
+3. Report what was started vs already running, with API URL and LAN IP.
+
+## Notes
+
+- Use background shells for long-running servers; verify with terminal output or port checks.
+- Do not start mobile (Expo) for `reset pc` / `start pc`; do not start Vite for `reset mobile` / `start mobile`.
+- Tunnel mode (`dev-mobile.ps1 -Tunnel`) only when the user explicitly requests it.
