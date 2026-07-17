@@ -1,9 +1,8 @@
 import { useRouter } from "expo-router";
 import { useEffect, useRef, useState } from "react";
-import { Image, Pressable, StyleSheet, Text, View } from "react-native";
+import { Image, Pressable, StyleSheet, Text, useWindowDimensions, View } from "react-native";
 import {
   canReuseMealPlan,
-  chefAvatarUrl,
   needsSessionLossWarning,
   type ChefPersona,
   type MealPlan,
@@ -12,11 +11,12 @@ import { WizardShell } from "@/components/WizardShell";
 import { useApp } from "@/context/AppProvider";
 import { Button } from "@/components/ui/Button";
 import { ActionBar } from "@/components/ActionBar";
-import { Card, CardBody, CardHeader, H2, Muted } from "@/components/ui/Card";
+import { Card, CardBody, CardHeader } from "@/components/ui/Card";
 import { Badge } from "@/components/ui/Badge";
 import { ParallelLoadingModal } from "@/components/ParallelLoadingModal";
 import { theme } from "@/constants/theme";
 import { api, getApiBaseUrl } from "@/lib/api";
+import { chefAvatarSource } from "@/lib/chef-avatars";
 import { isHostedApiUrl } from "@/lib/config";
 import { confirmSessionLoss } from "@/lib/confirm-session-loss";
 import { needsMobileWoolworthsSignIn } from "@/lib/woolworths-mobile";
@@ -69,7 +69,10 @@ export default function ChefScreen() {
 
   const basic = chefs.filter((c) => c.tier === "basic");
   const premium = chefs.filter((c) => c.tier === "premium");
+  const selected = chefs.find((c) => c.id === selectedChefId);
   const apiBase = getApiBaseUrl();
+  const { width } = useWindowDimensions();
+  const premiumColumns = width >= 640 ? 3 : 2;
 
   const goToPlan = () => router.push("/plan");
 
@@ -232,17 +235,18 @@ export default function ChefScreen() {
 
       <Card>
         <CardHeader>
-          <H2>Basic</H2>
-          <Badge>Free</Badge>
+          <View style={styles.tierHeader}>
+            <Text style={styles.tierLabel}>Basic</Text>
+            <Badge>Free</Badge>
+          </View>
         </CardHeader>
-        <CardBody>
+        <CardBody style={styles.basicBody}>
           {basic.map((chef) => (
-            <ChefRow
+            <ChefAvatar
               key={chef.id}
               chef={chef}
               selected={selectedChefId === chef.id}
               locked={false}
-              apiBase={apiBase}
               onPress={() => {
                 setSelectedChefId(chef.id);
                 setAnswers((a) => ({ ...a, chef_id: chef.id }));
@@ -254,26 +258,39 @@ export default function ChefScreen() {
 
       <Card style={{ marginTop: 16 }}>
         <CardHeader>
-          <H2>Premium</H2>
-          <Badge tone="mandatory">Subscriber</Badge>
+          <View style={styles.tierHeader}>
+            <Text style={styles.tierLabelPremium}>Premium</Text>
+            <Badge tone="mandatory">Subscriber</Badge>
+          </View>
         </CardHeader>
-        <CardBody>
-          {premium.map((chef) => (
-            <ChefRow
-              key={chef.id}
-              chef={chef}
-              selected={selectedChefId === chef.id}
-              locked={!premiumUnlocked}
-              apiBase={apiBase}
-              onPress={() => {
-                if (!premiumUnlocked) return;
-                setSelectedChefId(chef.id);
-                setAnswers((a) => ({ ...a, chef_id: chef.id }));
-              }}
-            />
-          ))}
+        <CardBody style={styles.premiumBody}>
+          <View style={styles.premiumGrid}>
+            {premium.map((chef) => (
+              <View
+                key={chef.id}
+                style={[styles.premiumCell, { width: `${100 / premiumColumns}%` }]}
+              >
+                <ChefAvatar
+                  chef={chef}
+                  selected={selectedChefId === chef.id}
+                  locked={!premiumUnlocked}
+                  onPress={() => {
+                    if (!premiumUnlocked) return;
+                    setSelectedChefId(chef.id);
+                    setAnswers((a) => ({ ...a, chef_id: chef.id }));
+                  }}
+                />
+              </View>
+            ))}
+          </View>
         </CardBody>
       </Card>
+
+      {selected ? (
+        <Text style={styles.selectedLine}>
+          Selected: <Text style={styles.selectedName}>{selected.name}</Text> — {selected.title}
+        </Text>
+      ) : null}
 
       <ActionBar style={styles.actions}>
         <Button title="← Back" variant="secondary" onPress={() => router.push("/discovery")} disabled={generating || woolworthsOpen} />
@@ -297,42 +314,61 @@ export default function ChefScreen() {
   );
 }
 
-function ChefRow({
+function ChefAvatar({
   chef,
   selected,
   locked,
-  apiBase,
   onPress,
 }: {
   chef: ChefPersona;
   selected: boolean;
   locked: boolean;
-  apiBase: string;
   onPress: () => void;
 }) {
-  const uri = chefAvatarUrl(apiBase, chef.avatar_image);
+  const isPremium = chef.tier === "premium";
+  const source = chefAvatarSource(chef.id);
+
   return (
     <Pressable
-      style={[styles.chefRow, selected && styles.chefSelected, locked && styles.chefLocked]}
+      style={[styles.avatarPressable, locked && styles.chefLocked]}
       onPress={onPress}
       disabled={locked}
     >
-      {uri ? (
-        <Image source={{ uri }} style={styles.avatar} />
-      ) : (
-        <View style={[styles.avatar, styles.avatarFallback]}>
-          <Text style={styles.initials}>{chef.avatar_initials}</Text>
-        </View>
-      )}
-      <View style={{ flex: 1 }}>
-        <Text style={styles.chefName}>{chef.name}</Text>
-        <Text style={styles.chefTitle}>{chef.title}</Text>
-        <Muted>{chef.tagline}</Muted>
+      <View
+        style={[
+          styles.avatarRing,
+          isPremium && styles.avatarRingPremium,
+          selected && styles.avatarRingSelected,
+        ]}
+      >
+        {source ? (
+          <Image source={source} style={styles.avatar} />
+        ) : (
+          <View
+            style={[
+              styles.avatar,
+              styles.avatarFallback,
+              { backgroundColor: chef.avatar_from || theme.green },
+            ]}
+          >
+            <Text style={styles.initials}>{chef.avatar_initials}</Text>
+          </View>
+        )}
+        {locked ? (
+          <View style={styles.lockOverlay}>
+            <Text style={styles.lockIcon}>🔒</Text>
+          </View>
+        ) : null}
       </View>
-      {locked && <Text>🔒</Text>}
+      <Text style={styles.chefName}>{chef.name}</Text>
+      <Text style={styles.chefTitle}>{chef.title}</Text>
+      <Text style={styles.chefTagline}>{chef.tagline}</Text>
+      <Text style={styles.chefRegion}>{chef.region}</Text>
     </Pressable>
   );
 }
+
+const AVATAR_SIZE = 112;
 
 const styles = StyleSheet.create({
   aiBannerOk: {
@@ -362,23 +398,114 @@ const styles = StyleSheet.create({
     marginBottom: 16,
   },
   bannerText: { fontSize: 13, color: "#92400e" },
-  chefRow: {
+  tierHeader: {
     flexDirection: "row",
     alignItems: "center",
-    gap: 12,
-    padding: 12,
-    borderRadius: 10,
-    marginBottom: 8,
-    borderWidth: 2,
-    borderColor: "transparent",
+    gap: 8,
   },
-  chefSelected: { borderColor: theme.green, backgroundColor: "#ecfdf5" },
+  tierLabel: {
+    fontSize: 13,
+    fontWeight: "700",
+    letterSpacing: 0.6,
+    textTransform: "uppercase",
+    color: "#64748b",
+  },
+  tierLabelPremium: {
+    fontSize: 13,
+    fontWeight: "700",
+    letterSpacing: 0.6,
+    textTransform: "uppercase",
+    color: "#b45309",
+  },
+  basicBody: {
+    alignItems: "center",
+    paddingVertical: 24,
+  },
+  premiumBody: {
+    paddingVertical: 16,
+  },
+  premiumGrid: {
+    flexDirection: "row",
+    flexWrap: "wrap",
+  },
+  premiumCell: {
+    paddingHorizontal: 8,
+    paddingVertical: 12,
+    alignItems: "center",
+  },
+  avatarPressable: {
+    alignItems: "center",
+    maxWidth: 176,
+  },
   chefLocked: { opacity: 0.6 },
-  avatar: { width: 56, height: 56, borderRadius: 28 },
-  avatarFallback: { backgroundColor: theme.green, alignItems: "center", justifyContent: "center" },
-  initials: { color: theme.white, fontWeight: "700", fontSize: 18 },
-  chefName: { fontWeight: "700", fontSize: 16, color: theme.text },
-  chefTitle: { color: theme.green, fontSize: 13, fontWeight: "600" },
+  avatarRing: {
+    borderRadius: (AVATAR_SIZE + 8) / 2,
+    padding: 4,
+  },
+  avatarRingPremium: {
+    backgroundColor: "#fbbf24",
+    shadowColor: "#d97706",
+    shadowOpacity: 0.35,
+    shadowRadius: 6,
+    shadowOffset: { width: 0, height: 2 },
+    elevation: 3,
+  },
+  avatarRingSelected: {
+    borderWidth: 4,
+    borderColor: theme.green,
+    padding: 2,
+  },
+  avatar: {
+    width: AVATAR_SIZE,
+    height: AVATAR_SIZE,
+    borderRadius: AVATAR_SIZE / 2,
+  },
+  avatarFallback: {
+    alignItems: "center",
+    justifyContent: "center",
+  },
+  lockOverlay: {
+    ...StyleSheet.absoluteFillObject,
+    borderRadius: (AVATAR_SIZE + 8) / 2,
+    backgroundColor: "rgba(0,0,0,0.4)",
+    alignItems: "center",
+    justifyContent: "center",
+  },
+  lockIcon: { fontSize: 28 },
+  initials: { color: theme.white, fontWeight: "700", fontSize: 28 },
+  chefName: {
+    marginTop: 12,
+    fontWeight: "700",
+    fontSize: 16,
+    color: theme.text,
+    textAlign: "center",
+  },
+  chefTitle: {
+    color: theme.green,
+    fontSize: 13,
+    fontWeight: "600",
+    textAlign: "center",
+  },
+  chefTagline: {
+    marginTop: 4,
+    fontSize: 12,
+    color: theme.textMuted,
+    textAlign: "center",
+    maxWidth: 176,
+  },
+  chefRegion: {
+    marginTop: 4,
+    fontSize: 12,
+    color: "#94a3b8",
+    textAlign: "center",
+  },
+  selectedLine: {
+    marginTop: 16,
+    textAlign: "center",
+    fontSize: 14,
+    color: "#475569",
+  },
+  selectedName: { fontWeight: "700", color: theme.text },
   actions: {
     marginTop: 24,
     flexDirection: "row",
