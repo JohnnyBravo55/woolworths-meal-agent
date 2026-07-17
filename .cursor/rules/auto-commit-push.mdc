@@ -1,0 +1,22 @@
+---
+description: Auto commit and push changes unless the user says otherwise
+alwaysApply: true
+---
+
+# Auto commit and push
+
+Unless the user explicitly says not to (e.g. "don't commit", "don't push", "local only"), after finishing a task that changes the repo:
+
+1. Commit relevant changes with a concise message (why over what).
+2. Push to the tracked remote branch (`git push -u origin HEAD` when needed).
+
+Still follow git safety:
+
+- Never commit secrets (`.env`, credentials, tokens).
+- Never force-push to main/master or use destructive git unless the user asks.
+- Never skip hooks unless the user asks.
+- Do not commit unrelated junk (e.g. local `.load-firefox/`, `output/`).
+- If there is nothing to commit, skip commit/push.
+- If push needs network permission, request it and push.
+
+This overrides “only commit when asked” for this workspace.
