@@ -25,7 +25,7 @@ class DiscoveryAnswers(BaseModel):
     likes: str = ""
     dislikes: str = ""
     other_instructions: str = ""
-    budget_nzd: float = 150.0
+    budget_nzd: float = 0.0
     store_name: str = ""
     simplicity: str = "simple"
     brand_preference: str = "mixed"

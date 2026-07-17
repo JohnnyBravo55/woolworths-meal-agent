@@ -231,12 +231,15 @@ export function DiscoveryStep({
             <h2 className="text-lg font-semibold">Budget &amp; store</h2>
           </CardHeader>
           <CardBody className="grid gap-4 sm:grid-cols-2">
-            <Field label="Weekly budget (NZD)">
+            <Field label="Weekly budget NZD (optional)">
               <input
                 type="number"
                 className="w-full rounded-lg border border-slate-300 px-3 py-2"
-                value={answers.budget_nzd}
-                onChange={(e) => set({ budget_nzd: Number(e.target.value) })}
+                value={answers.budget_nzd > 0 ? answers.budget_nzd : ""}
+                onChange={(e) =>
+                  set({ budget_nzd: e.target.value.trim() ? Number(e.target.value) || 0 : 0 })
+                }
+                placeholder="Leave blank for no hard budget"
               />
             </Field>
             <Field label="Store (suburb)">
@@ -306,7 +309,11 @@ export function DiscoveryStep({
                 Lunches: {answers.lunch_mode === "practical" ? "practical (leftovers)" : "original recipes"}
               </p>
             )}
-            <Badge tone="default">${answers.budget_nzd} budget</Badge>
+            {answers.budget_nzd > 0 ? (
+              <Badge tone="default">${answers.budget_nzd} budget</Badge>
+            ) : (
+              <Badge tone="default">No hard budget</Badge>
+            )}
             {answers.allergies && <Badge tone="warning">Allergies: {answers.allergies}</Badge>}
             {answers.pantry_items && (
               <Badge tone="default">Pantry: {answers.pantry_items}</Badge>

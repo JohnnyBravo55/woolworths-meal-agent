@@ -174,7 +174,7 @@ export default function DiscoveryScreen() {
           <H2>Diet & budget</H2>
         </CardHeader>
         <CardBody>
-          <Field label="Allergies (comma-separated)">
+          <Field label="Allergies (comma-separated, optional)">
             <TextInput
               style={styles.input}
               value={answers.allergies}
@@ -182,15 +182,23 @@ export default function DiscoveryScreen() {
               placeholder="e.g. gluten, nuts"
             />
           </Field>
-          <Field label="Weekly budget (NZD)">
+          <Field label="Weekly budget NZD (optional)">
             <TextInput
               style={styles.input}
               keyboardType="numeric"
-              value={String(answers.budget_nzd)}
-              onChangeText={(t) => set({ budget_nzd: Number(t) || 0 })}
+              value={answers.budget_nzd > 0 ? String(answers.budget_nzd) : ""}
+              onChangeText={(t) => {
+                const cleaned = t.replace(/[^0-9.]/g, "");
+                if (!cleaned.trim()) {
+                  set({ budget_nzd: 0 });
+                  return;
+                }
+                set({ budget_nzd: Number(cleaned) || 0 });
+              }}
+              placeholder="Leave blank for no hard budget"
             />
           </Field>
-          <Field label="Mandatory items (comma-separated)">
+          <Field label="Mandatory items (comma-separated, optional)">
             <TextInput
               style={styles.input}
               value={answers.mandatory_items}

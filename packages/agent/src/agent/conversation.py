@@ -17,6 +17,33 @@ from shared.models import (
     UserProfile,
 )
 
+# Used when the user leaves weekly budget blank (optional preference).
+_DEFAULT_SOFT_BUDGET_NZD = 200.0
+
+
+def _budget_nzd_from_answers(answers: dict) -> float:
+    raw = answers.get("budget_nzd", None)
+    if raw is None or raw == "":
+        return _DEFAULT_SOFT_BUDGET_NZD
+    try:
+        value = float(raw)
+    except (TypeError, ValueError):
+        return _DEFAULT_SOFT_BUDGET_NZD
+    if value <= 0:
+        return _DEFAULT_SOFT_BUDGET_NZD
+    return value
+
+
+def _budget_mode_from_answers(answers: dict) -> BudgetMode:
+    raw = answers.get("budget_nzd", None)
+    if raw is None or raw == "":
+        return BudgetMode.SOFT
+    try:
+        value = float(raw)
+    except (TypeError, ValueError):
+        return BudgetMode.SOFT
+    return BudgetMode.HARD if value > 0 else BudgetMode.SOFT
+
 
 class ConversationManager:
     """Manages discovery intake and phase transitions."""
@@ -150,8 +177,8 @@ class ConversationManager:
             likes=split_list(str(answers.get("likes", ""))),
             dislikes=split_list(str(answers.get("dislikes", ""))),
             other_instructions=str(answers.get("other_instructions", "") or "").strip(),
-            budget_nzd=float(answers.get("budget_nzd", 150)),
-            budget_mode=BudgetMode.HARD,
+            budget_nzd=_budget_nzd_from_answers(answers),
+            budget_mode=_budget_mode_from_answers(answers),
             store_name=str(answers.get("store_name", "")),
             store_id=str(answers.get("store_id", "")),
             simplicity=simplicity,
