@@ -325,7 +325,9 @@ class MealPlanner:
     """Creates meal plans using LLM when available, templates otherwise."""
 
     def __init__(self, api_key: str | None = None, model: str | None = None):
-        self.api_key = api_key or os.environ.get("OPENAI_API_KEY")
+        from meal_planner.openai_env import openai_api_key_from_env, sanitize_openai_api_key
+
+        self.api_key = sanitize_openai_api_key(api_key) if api_key else openai_api_key_from_env()
         self.model = model or os.environ.get("OPENAI_MODEL", "gpt-4o-mini")
         self._last_llm_error: str | None = None
 
@@ -353,10 +355,13 @@ class MealPlanner:
 
     @staticmethod
     def _format_llm_error(exc: Exception) -> str:
+        from meal_planner.openai_env import redact_secrets
+
         message = str(exc).strip() or exc.__class__.__name__
         cause = getattr(exc, "__cause__", None) or getattr(exc, "__context__", None)
         if cause and str(cause).strip() and str(cause).strip() not in message:
             message = f"{message} ({type(cause).__name__}: {str(cause).strip()})"
+        message = redact_secrets(message)
         lowered = message.lower()
         if "429" in message or "quota" in lowered:
             return (
@@ -365,6 +370,12 @@ class MealPlanner:
             )
         if "401" in message or ("invalid" in lowered and "api key" in lowered):
             return "OpenAI rejected the API key — check it is correct in your .env / host env."
+        if "illegal header value" in lowered or "\\n" in message or "\n" in str(exc):
+            return (
+                "OpenAI meal planning failed: OPENAI_API_KEY on the server looks malformed "
+                "(extra newline or another env var pasted into the key). "
+                "Set it to the key only, on one line."
+            )
         if "connection" in lowered:
             return (
                 "OpenAI meal planning failed: server could not reach api.openai.com. "

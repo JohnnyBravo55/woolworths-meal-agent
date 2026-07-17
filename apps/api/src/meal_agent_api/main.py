@@ -157,8 +157,10 @@ def _require_plan(session: AgentSession):
 @app.get("/api/health")
 async def health():
     """Public health check — includes whether OpenAI is configured on this API server."""
+    from meal_planner.openai_env import openai_api_key_from_env
+
     load_dotenv(PROJECT_ROOT / ".env", override=True)
-    api_key = os.environ.get("OPENAI_API_KEY", "").strip()
+    api_key = openai_api_key_from_env()
     model = os.environ.get("OPENAI_MODEL", "gpt-4o-mini").strip() or "gpt-4o-mini"
     return {
         "status": "ok",
@@ -170,8 +172,10 @@ async def health():
 @app.get("/api/health/openai")
 async def health_openai():
     """Probe outbound connectivity to OpenAI (no secrets returned)."""
+    from meal_planner.openai_env import openai_api_key_from_env, redact_secrets
+
     load_dotenv(PROJECT_ROOT / ".env", override=True)
-    api_key = os.environ.get("OPENAI_API_KEY", "").strip()
+    api_key = openai_api_key_from_env()
     model = os.environ.get("OPENAI_MODEL", "gpt-4o-mini").strip() or "gpt-4o-mini"
     if not api_key:
         return {
@@ -198,7 +202,8 @@ async def health_openai():
         cause = getattr(exc, "__cause__", None) or getattr(exc, "__context__", None)
         detail = str(exc).strip() or exc.__class__.__name__
         if cause and str(cause).strip():
-            detail = f"{detail} | cause={type(cause).__name__}: {str(cause).strip()}"
+            detail = f"{detail} | cause={type(cause).__name__}: {redact_secrets(str(cause).strip())}"
+        detail = redact_secrets(detail)
         return {
             "status": "error",
             "openai_configured": True,
