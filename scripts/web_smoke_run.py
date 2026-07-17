@@ -1,8 +1,9 @@
 #!/usr/bin/env python3
-"""Hosted web smoke: preferences → meal plan → shop list (no Woolworths login).
+"""Hosted web smoke: preferences → meal plan → shop list (+ plan/shop alignment audit).
 
 Usage:
   python scripts/web_smoke_run.py
+  python scripts/web_smoke_run.py --run-index 1
   python scripts/web_smoke_run.py --headed
   python scripts/web_smoke_run.py --base-url https://johnnybravo55.github.io/woolworths-meal-agent/
 """
@@ -10,11 +11,14 @@ Usage:
 from __future__ import annotations
 
 import argparse
+import importlib.util
 import json
 import os
 import sys
 import time
 from pathlib import Path
+from typing import Any
+from urllib.parse import urlparse
 
 ROOT = Path(__file__).resolve().parents[1]
 DEFAULT_BASE_URL = "https://johnnybravo55.github.io/woolworths-meal-agent/"
@@ -47,6 +51,16 @@ def _load_prefs(path: Path) -> dict:
     return json.loads(path.read_text(encoding="utf-8"))
 
 
+def _load_meal_eval():
+    path = ROOT / "scripts" / "meal_eval_run.py"
+    spec = importlib.util.spec_from_file_location("meal_eval_run", path)
+    if spec is None or spec.loader is None:
+        raise RuntimeError(f"Cannot load {path}")
+    mod = importlib.util.module_from_spec(spec)
+    spec.loader.exec_module(mod)
+    return mod
+
+
 def _click_by_testid_or_text(page, test_id: str, *texts: str, timeout: int = ACTION_TIMEOUT_MS) -> None:
     by_id = page.get_by_test_id(test_id)
     if by_id.count() > 0:
@@ -57,7 +71,6 @@ def _click_by_testid_or_text(page, test_id: str, *texts: str, timeout: int = ACT
         if loc.count() > 0:
             loc.first.click(timeout=timeout)
             return
-    # Last resort: substring match on first text
     if texts:
         page.get_by_text(texts[0]).first.click(timeout=timeout)
         return
@@ -86,17 +99,14 @@ def _fill_by_testid_or_placeholder(
         if by_label.count() > 0:
             by_label.first.fill(value)
             return
-    # Prefs are optional enhancements; continue with defaults if missing.
 
 
 def _assert_no_woolworths_connect(page) -> None:
     url = page.url.lower()
     if WW_FORBIDDEN_URL in url:
         raise SmokeFail(f"Navigated to Woolworths connect page: {page.url}")
-    if "/cart" in url and "shop" not in url:
-        # Expo routes: .../cart — fail if we landed on cart accidentally
-        if url.rstrip("/").endswith("/cart"):
-            raise SmokeFail(f"Navigated to cart (out of scope): {page.url}")
+    if url.rstrip("/").endswith("/cart"):
+        raise SmokeFail(f"Navigated to cart (out of scope): {page.url}")
     for text in WW_FORBIDDEN_TEXT:
         loc = page.get_by_text(text, exact=True)
         if loc.count() == 0:
@@ -130,12 +140,102 @@ def _wait_plan_ready(page) -> None:
         if approve.count() == 0:
             approve = page.get_by_text("Approve plan →", exact=True)
         if approve.count() > 0 and approve.first.is_visible():
-            # Ensure generate spinner is gone
             generating = page.get_by_text("Generating…", exact=True)
             if generating.count() == 0 or not generating.first.is_visible():
                 return
         time.sleep(1.0)
     raise SmokeFail("Timed out waiting for meal plan / Approve plan")
+
+
+def _is_api_url(url: str) -> bool:
+    try:
+        path = urlparse(url).path or ""
+    except Exception:  # noqa: BLE001
+        return False
+    return "/api/" in path
+
+
+def _fetch_plan_and_shop(
+    *,
+    api_base: str,
+    session_id: str,
+    access_code: str,
+) -> tuple[dict[str, Any], dict[str, Any]]:
+    import httpx
+
+    headers = {
+        "X-Session-Id": session_id,
+        "Content-Type": "application/json",
+    }
+    if access_code:
+        headers["X-Access-Code"] = access_code
+
+    base = api_base.rstrip("/")
+    with httpx.Client(timeout=60.0, headers=headers) as client:
+        plan_res = client.get(f"{base}/api/plan")
+        plan_res.raise_for_status()
+        plan_body = plan_res.json()
+        meal_plan = plan_body.get("meal_plan") or plan_body
+        if not isinstance(meal_plan, dict) or not meal_plan.get("meals"):
+            raise SmokeFail(f"API /api/plan missing meals: {plan_body!r}")
+
+        shop_res = client.get(f"{base}/api/shop/list")
+        shop_res.raise_for_status()
+        shop_body = shop_res.json()
+        resolved = shop_body.get("resolved_list") or shop_body
+        if not isinstance(resolved, dict) or "items" not in resolved:
+            raise SmokeFail(f"API /api/shop/list missing resolved_list: {shop_body!r}")
+        return meal_plan, resolved
+
+
+def _audit_alignment(
+    *,
+    prefs: dict[str, Any],
+    meal_plan: dict[str, Any],
+    resolved: dict[str, Any],
+    out_dir: Path,
+    run_index: int,
+) -> dict[str, Any]:
+    meal_eval = _load_meal_eval()
+    heuristic = meal_eval.run_heuristic_audit(prefs, meal_plan, resolved)
+
+    coverage: list[dict[str, Any]] = []
+    try:
+        from agent.conversation import ConversationManager
+        from shared.models import MealPlan as MealPlanModel
+
+        answers = {k: v for k, v in prefs.items() if k != "name"}
+        profile_obj = ConversationManager().create_profile_from_answers(answers)
+        meal_plan_obj = MealPlanModel.model_validate(meal_plan)
+        coverage = meal_eval.run_shop_coverage_audit(profile_obj, meal_plan_obj, resolved)
+    except Exception as exc:  # noqa: BLE001
+        # Coverage audit is best-effort; heuristic still runs.
+        coverage = [{"kind": "audit_error", "detail": str(exc)}]
+
+    findings, report = meal_eval.build_audit_report(
+        run_index=run_index,
+        chef_id=str(prefs.get("chef_id") or "basic_sam"),
+        heuristic=heuristic,
+        coverage=coverage,
+        cart_audit=None,
+    )
+    # Web smoke does not care about trolley; products_ok is the alignment gate.
+    products_ok = bool(findings.get("checks", {}).get("products_ok"))
+    findings["passed"] = products_ok
+    findings["checks"]["within_budget"] = None
+    findings["checks"]["trolley_ok"] = None
+
+    (out_dir / "meal_plan.json").write_text(
+        json.dumps(meal_plan, indent=2) + "\n", encoding="utf-8"
+    )
+    (out_dir / "resolved_list.json").write_text(
+        json.dumps(resolved, indent=2) + "\n", encoding="utf-8"
+    )
+    (out_dir / "audit_findings.json").write_text(
+        json.dumps(findings, indent=2) + "\n", encoding="utf-8"
+    )
+    (out_dir / "audit_report.md").write_text(report, encoding="utf-8")
+    return findings
 
 
 def run_smoke(
@@ -145,17 +245,20 @@ def run_smoke(
     prefs_path: Path,
     headed: bool,
     out_dir: Path,
+    run_index: int,
 ) -> None:
     try:
         from playwright.sync_api import sync_playwright
     except ImportError as e:
         raise SystemExit(
-            "playwright is not installed. Run: pip install -e \".[e2e]\" && playwright install chromium"
+            'playwright is not installed. Run: pip install -e ".[e2e]" && playwright install chromium'
         ) from e
 
     prefs = _load_prefs(prefs_path)
     out_dir.mkdir(parents=True, exist_ok=True)
     url = base_url.rstrip("/") + "/"
+
+    captured_api_base: dict[str, str] = {"url": ""}
 
     with sync_playwright() as p:
         browser = p.chromium.launch(headless=not headed)
@@ -164,12 +267,18 @@ def run_smoke(
         page.set_default_timeout(ACTION_TIMEOUT_MS)
         page.set_default_navigation_timeout(NAV_TIMEOUT_MS)
 
+        def on_request(request) -> None:
+            if _is_api_url(request.url) and not captured_api_base["url"]:
+                parsed = urlparse(request.url)
+                captured_api_base["url"] = f"{parsed.scheme}://{parsed.netloc}"
+
+        page.on("request", on_request)
+
         try:
             print(f"Opening {url}")
             page.goto(url, wait_until="domcontentloaded")
             _assert_no_woolworths_connect(page)
 
-            # Access gate (may already be unlocked in sessionStorage from prior runs — fresh context so expect gate)
             gate_input = page.get_by_test_id("access-code-input")
             if gate_input.count() == 0:
                 gate_input = page.get_by_placeholder("Access code")
@@ -177,7 +286,6 @@ def run_smoke(
                 print("Unlocking access gate…")
                 gate_input.first.fill(access_code)
                 _click_by_testid_or_text(page, "access-code-continue", "Continue", "Checking…")
-                # Wait for preferences
                 page.get_by_text("Preferences", exact=True).first.wait_for(
                     state="visible", timeout=NAV_TIMEOUT_MS
                 )
@@ -217,6 +325,24 @@ def run_smoke(
                     placeholder="lamb, coriander",
                     label="Dislikes",
                 )
+            mandatory = prefs.get("mandatory_items") or ""
+            if mandatory:
+                _fill_by_testid_or_placeholder(
+                    page,
+                    "discovery-mandatory",
+                    mandatory,
+                    placeholder="milk, bread",
+                    label="Mandatory items",
+                )
+            pantry = prefs.get("pantry_items") or ""
+            if pantry:
+                _fill_by_testid_or_placeholder(
+                    page,
+                    "discovery-pantry",
+                    pantry,
+                    placeholder="olive oil, rice, soy sauce",
+                    label="Already in pantry",
+                )
 
             print("Continue to chef…")
             _click_by_testid_or_text(page, "discovery-continue", "Continue to chef →")
@@ -253,27 +379,84 @@ def run_smoke(
             _wait_shop_summary(page)
             _assert_no_woolworths_connect(page)
 
-            # Final guard: still not on connect/cart
             url_now = page.url.lower()
             if WW_FORBIDDEN_URL in url_now:
                 raise SmokeFail(f"Ended on connect page: {page.url}")
             if url_now.rstrip("/").endswith("/cart"):
                 raise SmokeFail(f"Ended on cart page: {page.url}")
 
-            print("PASS: shop list reached without Woolworths login.")
-            (out_dir / "result.json").write_text(
-                json.dumps(
-                    {
-                        "ok": True,
-                        "url": page.url,
-                        "prefs": prefs,
-                        "base_url": base_url,
-                    },
-                    indent=2,
+            print("PASS (UI): shop list reached without Woolworths login.")
+
+            session_id = page.evaluate("() => localStorage.getItem('meal_agent_session')")
+            if not session_id:
+                raise SmokeFail("No meal_agent_session in localStorage — cannot audit alignment")
+
+            api_base = captured_api_base["url"]
+            if not api_base:
+                # Fallback: read baked-in Expo extra if present on window
+                api_base = page.evaluate(
+                    """() => {
+                      try {
+                        return (window.__EXPO_PUBLIC_API_URL
+                          || (window.expoConfig && window.expoConfig.extra && window.expoConfig.extra.apiUrl)
+                          || '');
+                      } catch (e) { return ''; }
+                    }"""
                 )
-                + "\n",
-                encoding="utf-8",
+            if not api_base:
+                raise SmokeFail("Could not determine API base URL for alignment audit")
+
+            print(f"Auditing plan vs shop via {api_base} (session {session_id[:8]}…)…")
+            meal_plan, resolved = _fetch_plan_and_shop(
+                api_base=api_base,
+                session_id=session_id,
+                access_code=access_code,
             )
+            findings = _audit_alignment(
+                prefs=prefs,
+                meal_plan=meal_plan,
+                resolved=resolved,
+                out_dir=out_dir,
+                run_index=run_index,
+            )
+            heuristic = findings.get("heuristic") or {}
+            print(
+                f"Alignment: covered={heuristic.get('covered')} "
+                f"gaps={len(heuristic.get('gaps') or [])} "
+                f"wrong={len(heuristic.get('wrong_product') or [])} "
+                f"mandatory_missing={heuristic.get('missing_mandatory')} "
+                f"coverage={len(findings.get('shop_coverage') or [])}"
+            )
+
+            result = {
+                "ok": bool(findings.get("passed")),
+                "url": page.url,
+                "prefs": prefs,
+                "base_url": base_url,
+                "api_base": api_base,
+                "session_id": session_id,
+                "audit": {
+                    "passed": findings.get("passed"),
+                    "issue_count": findings.get("issue_count"),
+                    "checks": findings.get("checks"),
+                    "gaps": heuristic.get("gaps"),
+                    "wrong_product": heuristic.get("wrong_product"),
+                    "missing_mandatory": heuristic.get("missing_mandatory"),
+                    "coverage_issues": heuristic.get("coverage_issues"),
+                    "shop_coverage": findings.get("shop_coverage"),
+                },
+            }
+            (out_dir / "result.json").write_text(
+                json.dumps(result, indent=2) + "\n", encoding="utf-8"
+            )
+
+            if not findings.get("passed"):
+                raise SmokeFail(
+                    f"Plan/shop misaligned ({findings.get('issue_count')} issue(s)) — "
+                    f"see {out_dir / 'audit_report.md'}"
+                )
+
+            print("PASS: shop list reached and plan/shop align.")
         except Exception as e:
             shot = out_dir / "failure.png"
             try:
@@ -281,17 +464,21 @@ def run_smoke(
                 print(f"Screenshot saved to {shot}")
             except Exception as shot_err:
                 print(f"Could not save screenshot: {shot_err}")
+            existing = {}
+            if (out_dir / "result.json").exists():
+                try:
+                    existing = json.loads((out_dir / "result.json").read_text(encoding="utf-8"))
+                except Exception:  # noqa: BLE001
+                    existing = {}
+            existing.update(
+                {
+                    "ok": False,
+                    "error": str(e),
+                    "url": page.url if page else None,
+                }
+            )
             (out_dir / "result.json").write_text(
-                json.dumps(
-                    {
-                        "ok": False,
-                        "error": str(e),
-                        "url": page.url if page else None,
-                    },
-                    indent=2,
-                )
-                + "\n",
-                encoding="utf-8",
+                json.dumps(existing, indent=2) + "\n", encoding="utf-8"
             )
             raise
         finally:
@@ -300,16 +487,21 @@ def run_smoke(
 
 
 def main(argv: list[str] | None = None) -> int:
-    parser = argparse.ArgumentParser(description="Hosted web smoke through shop list")
+    parser = argparse.ArgumentParser(
+        description="Hosted web smoke through shop list + plan/shop alignment"
+    )
     parser.add_argument("--base-url", default=os.environ.get("WEB_SMOKE_BASE_URL", DEFAULT_BASE_URL))
     parser.add_argument(
         "--access-code",
         default=os.environ.get("MEAL_AGENT_ACCESS_CODE", "usertest1"),
     )
     parser.add_argument("--prefs", type=Path, default=DEFAULT_PREFS)
-    parser.add_argument("--out-dir", type=Path, default=DEFAULT_OUT)
+    parser.add_argument("--out-dir", type=Path, default=None)
+    parser.add_argument("--run-index", type=int, default=1)
     parser.add_argument("--headed", action="store_true", help="Show browser window")
     args = parser.parse_args(argv)
+
+    out_dir = args.out_dir or (DEFAULT_OUT / f"run-{args.run_index:03d}")
 
     try:
         run_smoke(
@@ -317,7 +509,8 @@ def main(argv: list[str] | None = None) -> int:
             access_code=args.access_code,
             prefs_path=args.prefs,
             headed=args.headed,
-            out_dir=args.out_dir,
+            out_dir=out_dir,
+            run_index=args.run_index,
         )
         return 0
     except SmokeFail as e:

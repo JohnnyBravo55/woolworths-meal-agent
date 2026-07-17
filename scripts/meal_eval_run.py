@@ -141,6 +141,26 @@ def _norm(s: str) -> str:
     return s.lower().strip()
 
 
+def _mandatory_item_covered(mandatory: str, items: list[dict[str, Any]]) -> bool:
+    """True when shop list covers a mandatory staple (not e.g. coconut milk for milk)."""
+    m = _norm(mandatory)
+    if not m:
+        return True
+    for item in items:
+        ing = _norm(str(item.get("ingredient") or ""))
+        prod = _norm(str(item.get("product_name") or ""))
+        for name in (ing, prod):
+            if not name:
+                continue
+            if m == "milk" and "coconut" in name:
+                continue
+            if name == m:
+                return True
+            if re.search(rf"(?:^|[^a-z0-9]){re.escape(m)}(?:[^a-z0-9]|$)", name):
+                return True
+    return False
+
+
 def _in_pantry(name: str, pantry: list[str]) -> bool:
     n = _norm(name)
     for p in pantry:
@@ -357,10 +377,8 @@ def run_heuristic_audit(
     shop_names = {_norm(i.get("ingredient", "")) for i in items}
     missing_mandatory: list[str] = []
     for m in mandatory:
-        if not any(m in s or s in m for s in shop_names):
-            # also accept product_name match
-            if not any(m in _norm(i.get("product_name", "")) for i in items):
-                missing_mandatory.append(m)
+        if not _mandatory_item_covered(m, items):
+            missing_mandatory.append(m)
 
     return {
         "covered": covered,

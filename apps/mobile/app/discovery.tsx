@@ -209,6 +209,8 @@ export default function DiscoveryScreen() {
               onChangeText={(t) => set({ mandatory_items: t })}
               placeholder="milk, bread"
               placeholderTextColor={theme.placeholder}
+              testID="discovery-mandatory"
+              accessibilityLabel="Mandatory items"
             />
           </Field>
           <Field label="Already in pantry (comma-separated)">
@@ -218,6 +220,8 @@ export default function DiscoveryScreen() {
               onChangeText={(t) => set({ pantry_items: t })}
               placeholder="olive oil, rice, soy sauce"
               placeholderTextColor={theme.placeholder}
+              testID="discovery-pantry"
+              accessibilityLabel="Already in pantry"
             />
           </Field>
           <Field label="Likes (comma-separated)">
