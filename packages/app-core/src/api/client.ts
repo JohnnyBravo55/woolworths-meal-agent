@@ -36,6 +36,26 @@ function parseApiError(body: unknown, statusText: string): string {
   return statusText;
 }
 
+function isHostedHttpUrl(url: string): boolean {
+  try {
+    const host = new URL(url).hostname;
+    return host !== "localhost" && host !== "127.0.0.1" && !/^(192\.168\.|10\.|172\.(1[6-9]|2\d|3[01])\.)/.test(host);
+  } catch {
+    return false;
+  }
+}
+
+function unreachableApiMessage(url: string, kind: "timeout" | "network"): string {
+  if (isHostedHttpUrl(url)) {
+    return kind === "timeout"
+      ? `Hosted API at ${url} timed out — Render free tier can take 30–60s to wake. Wait and retry.`
+      : `Cannot reach hosted API at ${url} — check the Render service is live, then refresh and retry.`;
+  }
+  return kind === "timeout"
+    ? `PC API not responding at ${url} — start meal-agent-api on port 8000 (Expo Metro uses 8081/8082, not the API).`
+    : `Cannot reach PC API at ${url} — same Wi-Fi as your PC, API on port 8000.`;
+}
+
 export function createApiClient(config: ApiClientConfig) {
   const { baseUrl, sessionStore, useCredentials = false } = config;
   const base = () => {
@@ -58,10 +78,13 @@ export function createApiClient(config: ApiClientConfig) {
 
   async function jsonFetch<T>(path: string, init?: RequestInit): Promise<T> {
     const controller = new AbortController();
-    const timeout = setTimeout(() => controller.abort(), 15_000);
+    const url = base();
+    // Render free cold-starts often exceed 15s; local stays snappy.
+    const timeoutMs = isHostedHttpUrl(url) ? 60_000 : 15_000;
+    const timeout = setTimeout(() => controller.abort(), timeoutMs);
     try {
       const headers = await authHeaders();
-      const res = await fetch(`${base()}${path}`, {
+      const res = await fetch(`${url}${path}`, {
         credentials: useCredentials ? "include" : "omit",
         headers: { ...headers, ...(init?.headers || {}) },
         ...init,
@@ -74,15 +97,14 @@ export function createApiClient(config: ApiClientConfig) {
       return res.json();
     } catch (err) {
       if (err instanceof Error && err.name === "AbortError") {
-        const url = base();
-        throw new Error(
-          `PC API not responding at ${url} — start meal-agent-api on port 8000 (Expo Metro uses 8081/8082, not the API).`,
-        );
+        throw new Error(unreachableApiMessage(url, "timeout"));
       }
-      if (err instanceof TypeError && String(err.message).toLowerCase().includes("network")) {
-        throw new Error(
-          `Cannot reach PC API at ${base()} — same Wi-Fi as your PC, API on port 8000.`,
-        );
+      const msg = err instanceof Error ? err.message.toLowerCase() : "";
+      if (
+        err instanceof TypeError &&
+        (msg.includes("network") || msg.includes("failed to fetch") || msg.includes("load failed"))
+      ) {
+        throw new Error(unreachableApiMessage(url, "network"));
       }
       throw err;
     } finally {
@@ -180,7 +202,9 @@ export function createApiClient(config: ApiClientConfig) {
       } catch (err) {
         if (err instanceof Error && err.name === "AbortError") {
           throw new Error(
-            "Checking sign-in timed out — make sure meal-agent-api is running on port 8000.",
+            isHostedHttpUrl(base())
+              ? "Checking Woolworths sign-in timed out — retry in a moment (hosted API may be waking)."
+              : "Checking sign-in timed out — make sure meal-agent-api is running on port 8000.",
           );
         }
         throw err;
@@ -208,9 +232,7 @@ export function createApiClient(config: ApiClientConfig) {
         return res.json() as Promise<{ connected: boolean; message: string }>;
       } catch (err) {
         if (err instanceof Error && err.name === "AbortError") {
-          throw new Error(
-            `PC API not responding at ${base()} — start meal-agent-api on port 8000 (Expo uses 8081/8082).`,
-          );
+          throw new Error(unreachableApiMessage(base(), "timeout"));
         }
         throw err;
       } finally {
