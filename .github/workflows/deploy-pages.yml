@@ -31,6 +31,12 @@ jobs:
         run: |
           if [ -f package-lock.json ]; then npm ci; else npm install; fi
 
+      - name: Build browser extension packages
+        run: |
+          sudo apt-get update -qq
+          sudo apt-get install -y -qq zip
+          bash apps/browser-extension/scripts/build-packages.sh
+
       - name: Export static web
         working-directory: apps/mobile
         env:

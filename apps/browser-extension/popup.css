@@ -1,0 +1,47 @@
+body {
+  margin: 0;
+  font-family: system-ui, -apple-system, Segoe UI, sans-serif;
+  width: 280px;
+  background: #f7faf7;
+  color: #14201a;
+}
+
+main {
+  padding: 14px;
+}
+
+h1 {
+  font-size: 15px;
+  margin: 0 0 8px;
+}
+
+#status {
+  font-size: 13px;
+  line-height: 1.35;
+  margin: 0 0 12px;
+  color: #3d5248;
+}
+
+button {
+  width: 100%;
+  border: 0;
+  border-radius: 10px;
+  padding: 10px 12px;
+  font-size: 14px;
+  font-weight: 700;
+  background: #16a34a;
+  color: #fff;
+  cursor: pointer;
+}
+
+button:disabled {
+  opacity: 0.6;
+  cursor: default;
+}
+
+.hint {
+  margin: 12px 0 0;
+  font-size: 11px;
+  line-height: 1.4;
+  color: #6b7f74;
+}

@@ -25,7 +25,7 @@ Ship a shareable webpage for early testers to run the full product flow (prefere
 - **GitHub Pages** serves the Expo web static build.
 - **Render** runs the Python API; env holds `OPENAI_API_KEY`, `MEAL_AGENT_ACCESS_CODE`, `MEAL_AGENT_CORS_ORIGINS`.
 - Frontend calls API via bake-in `EXPO_PUBLIC_API_URL` and sends `X-Session-Id` + `X-Access-Code`.
-- Woolworths cookies for hosted web use in-app WebView when possible; if cross-origin framing blocks harvest, use a same-tab bookmarklet / cookie-transfer helper so testers can still import cookies to the API.
+- Woolworths cookies for hosted web use the Meal Agent browser extension (Chrome/Edge/Firefox/Safari Mac) for one-click connect; bookmarklet / Cookie paste remain as advanced fallback.
 - In-memory wizard sessions may reset on Render sleep/redeploy (accepted for v1).
 
 ## Access code

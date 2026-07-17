@@ -1,0 +1,48 @@
+{
+  "manifest_version": 3,
+  "name": "Meal Agent — Woolworths Connect",
+  "version": "1.0.0",
+  "description": "One-click Woolworths NZ session connect for the Meal Agent hosted app.",
+  "icons": {
+    "16": "icons/icon-16.png",
+    "32": "icons/icon-32.png",
+    "48": "icons/icon-48.png",
+    "128": "icons/icon-128.png"
+  },
+  "action": {
+    "default_title": "Connect Woolworths",
+    "default_popup": "popup.html",
+    "default_icon": {
+      "16": "icons/icon-16.png",
+      "32": "icons/icon-32.png",
+      "48": "icons/icon-48.png"
+    }
+  },
+  "background": {
+    "service_worker": "background.js"
+  },
+  "permissions": ["cookies", "storage"],
+  "host_permissions": [
+    "https://*.woolworths.co.nz/*",
+    "https://woolworths.co.nz/*",
+    "https://*.onrender.com/*",
+    "https://*.github.io/*",
+    "http://127.0.0.1:8000/*",
+    "http://localhost:8000/*",
+    "http://127.0.0.1:5173/*",
+    "http://localhost:5173/*",
+    "http://127.0.0.1:8081/*",
+    "http://localhost:8081/*"
+  ],
+  "content_scripts": [
+    {
+      "matches": [
+        "https://*.github.io/*",
+        "http://127.0.0.1/*",
+        "http://localhost/*"
+      ],
+      "js": ["content-script.js"],
+      "run_at": "document_idle"
+    }
+  ]
+}

@@ -89,7 +89,7 @@ npx expo start
 | Platform | Connect flow |
 |----------|--------------|
 | Local PC / Expo web | API opens your default browser; cookies imported server-side |
-| Hosted Expo web | Sign in on woolworths.co.nz → bookmarklet or paste Cookie header → `import-cookies` |
+| Hosted Expo web | Install browser extension (Chrome/Edge/Firefox/Safari Mac) → one-click Connect; bookmarklet/paste as advanced fallback |
 | iOS / Android | In-app WebView sign-in → cookies sent to `POST /api/session/woolworths/import-cookies` |
 | View trolley (mobile) | System in-app browser via `expo-web-browser` |
 
@@ -116,6 +116,7 @@ apps/
   cli/             # Rich terminal UI
   api/             # FastAPI web backend
   mobile/          # Expo Router app (iOS, Android, web)
+  browser-extension/ # Hosted Woolworths one-click connect (Chrome/Edge/Firefox/Safari Mac)
   web/             # Legacy Vite React UI
 tests/             # Unit + integration smoke tests
 ```
@@ -163,7 +164,7 @@ GitHub Pages requires a **public** repo on the free plan (the access code still 
 1. Open the GitHub Pages URL.
 2. Enter access code **`usertest1`**.
 3. Complete preferences → chef → plan → shop.
-4. Connect Woolworths: sign in on woolworths.co.nz, then use the **connect bookmarklet** (or paste Cookie header) so the hosted API receives your session.
+4. Connect Woolworths: the page detects your browser and shows install steps. Download the extension zip, load it, sign in on woolworths.co.nz, then click **Connect Woolworths** in the extension. (Advanced: bookmarklet / paste Cookie header.)
 5. Add to trolley.
 
 **Secrets stay on Render / GitHub Actions** — never commit `.env`.
