@@ -179,7 +179,6 @@ export function DiscoveryStep({
                 className="w-full rounded-lg border border-slate-300 px-3 py-2"
                 value={answers.allergies}
                 onChange={(e) => set({ allergies: e.target.value })}
-                placeholder="gluten, nuts"
               />
             </Field>
             <Field label="Mandatory items each shop">
@@ -187,7 +186,6 @@ export function DiscoveryStep({
                 className="w-full rounded-lg border border-slate-300 px-3 py-2"
                 value={answers.mandatory_items}
                 onChange={(e) => set({ mandatory_items: e.target.value })}
-                placeholder="milk, gluten free bread"
               />
             </Field>
             <Field label="Already have at home (pantry)">
@@ -195,7 +193,6 @@ export function DiscoveryStep({
                 className="w-full rounded-lg border border-slate-300 px-3 py-2"
                 value={answers.pantry_items}
                 onChange={(e) => set({ pantry_items: e.target.value })}
-                placeholder="olive oil, rice, soy sauce — chef uses these, won't shop for them"
               />
             </Field>
             <div className="grid gap-4 sm:grid-cols-2">
@@ -220,7 +217,6 @@ export function DiscoveryStep({
                 rows={3}
                 value={answers.other_instructions}
                 onChange={(e) => set({ other_instructions: e.target.value })}
-                placeholder="e.g. oven & microwave only — no stovetop cooking; 3 dinners curry-based"
               />
             </Field>
           </CardBody>
@@ -239,7 +235,6 @@ export function DiscoveryStep({
                 onChange={(e) =>
                   set({ budget_nzd: e.target.value.trim() ? Number(e.target.value) || 0 : 0 })
                 }
-                placeholder="Leave blank for no hard budget"
               />
             </Field>
             <Field label="Store (suburb)">
@@ -247,7 +242,6 @@ export function DiscoveryStep({
                 className="w-full rounded-lg border border-slate-300 px-3 py-2"
                 value={answers.store_name}
                 onChange={(e) => set({ store_name: e.target.value })}
-                placeholder="Ferrymead"
               />
             </Field>
             <Field label="Brand preference">

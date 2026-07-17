@@ -179,7 +179,6 @@ export default function DiscoveryScreen() {
               style={styles.input}
               value={answers.allergies}
               onChangeText={(t) => set({ allergies: t })}
-              placeholder="e.g. gluten, nuts"
             />
           </Field>
           <Field label="Weekly budget NZD (optional)">
@@ -195,7 +194,6 @@ export default function DiscoveryScreen() {
                 }
                 set({ budget_nzd: Number(cleaned) || 0 });
               }}
-              placeholder="Leave blank for no hard budget"
             />
           </Field>
           <Field label="Mandatory items (comma-separated, optional)">
@@ -203,7 +201,6 @@ export default function DiscoveryScreen() {
               style={styles.input}
               value={answers.mandatory_items}
               onChangeText={(t) => set({ mandatory_items: t })}
-              placeholder="milk, bread"
             />
           </Field>
           <Field label="Already in pantry (comma-separated)">
@@ -211,7 +208,6 @@ export default function DiscoveryScreen() {
               style={styles.input}
               value={answers.pantry_items}
               onChangeText={(t) => set({ pantry_items: t })}
-              placeholder="olive oil, rice, soy sauce"
             />
           </Field>
           <Field label="Likes (comma-separated)">
@@ -219,7 +215,6 @@ export default function DiscoveryScreen() {
               style={styles.input}
               value={answers.likes}
               onChangeText={(t) => set({ likes: t })}
-              placeholder="chicken, pasta, japanese"
             />
           </Field>
           <Field label="Dislikes (comma-separated)">
@@ -227,7 +222,6 @@ export default function DiscoveryScreen() {
               style={styles.input}
               value={answers.dislikes}
               onChangeText={(t) => set({ dislikes: t })}
-              placeholder="lamb, coriander"
             />
           </Field>
           <Field label="Other instructions">
@@ -235,7 +229,6 @@ export default function DiscoveryScreen() {
               style={[styles.input, styles.textarea]}
               value={answers.other_instructions}
               onChangeText={(t) => set({ other_instructions: t })}
-              placeholder="e.g. oven & microwave only — no stovetop cooking"
               multiline
               textAlignVertical="top"
             />
