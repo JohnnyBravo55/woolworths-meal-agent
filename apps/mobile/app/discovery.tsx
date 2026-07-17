@@ -322,6 +322,7 @@ const styles = StyleSheet.create({
     borderRadius: 8,
     padding: 10,
     fontSize: 15,
+    color: theme.text,
     backgroundColor: theme.white,
   },
   textarea: {
