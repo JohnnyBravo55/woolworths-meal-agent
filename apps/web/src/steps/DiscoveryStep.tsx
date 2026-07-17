@@ -176,23 +176,26 @@ export function DiscoveryStep({
           <CardBody className="grid gap-4">
             <Field label="Allergies (comma-separated)">
               <input
-                className="w-full rounded-lg border border-slate-300 px-3 py-2"
+                className="w-full rounded-lg border border-slate-300 px-3 py-2 placeholder:text-slate-400"
                 value={answers.allergies}
                 onChange={(e) => set({ allergies: e.target.value })}
+                placeholder="e.g. gluten, nuts"
               />
             </Field>
             <Field label="Mandatory items each shop">
               <input
-                className="w-full rounded-lg border border-slate-300 px-3 py-2"
+                className="w-full rounded-lg border border-slate-300 px-3 py-2 placeholder:text-slate-400"
                 value={answers.mandatory_items}
                 onChange={(e) => set({ mandatory_items: e.target.value })}
+                placeholder="milk, gluten free bread"
               />
             </Field>
             <Field label="Already have at home (pantry)">
               <input
-                className="w-full rounded-lg border border-slate-300 px-3 py-2"
+                className="w-full rounded-lg border border-slate-300 px-3 py-2 placeholder:text-slate-400"
                 value={answers.pantry_items}
                 onChange={(e) => set({ pantry_items: e.target.value })}
+                placeholder="olive oil, rice, soy sauce"
               />
             </Field>
             <div className="grid gap-4 sm:grid-cols-2">
@@ -213,10 +216,11 @@ export function DiscoveryStep({
             </div>
             <Field label="Other instructions">
               <textarea
-                className="w-full rounded-lg border border-slate-300 px-3 py-2"
+                className="w-full rounded-lg border border-slate-300 px-3 py-2 placeholder:text-slate-400"
                 rows={3}
                 value={answers.other_instructions}
                 onChange={(e) => set({ other_instructions: e.target.value })}
+                placeholder="e.g. oven & microwave only — no stovetop cooking"
               />
             </Field>
           </CardBody>
@@ -230,18 +234,20 @@ export function DiscoveryStep({
             <Field label="Weekly budget NZD (optional)">
               <input
                 type="number"
-                className="w-full rounded-lg border border-slate-300 px-3 py-2"
+                className="w-full rounded-lg border border-slate-300 px-3 py-2 placeholder:text-slate-400"
                 value={answers.budget_nzd > 0 ? answers.budget_nzd : ""}
                 onChange={(e) =>
                   set({ budget_nzd: e.target.value.trim() ? Number(e.target.value) || 0 : 0 })
                 }
+                placeholder="Leave blank for no hard budget"
               />
             </Field>
             <Field label="Store (suburb)">
               <input
-                className="w-full rounded-lg border border-slate-300 px-3 py-2"
+                className="w-full rounded-lg border border-slate-300 px-3 py-2 placeholder:text-slate-400"
                 value={answers.store_name}
                 onChange={(e) => set({ store_name: e.target.value })}
+                placeholder="Ferrymead"
               />
             </Field>
             <Field label="Brand preference">
