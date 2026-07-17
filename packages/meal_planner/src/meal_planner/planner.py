@@ -353,15 +353,24 @@ class MealPlanner:
 
     @staticmethod
     def _format_llm_error(exc: Exception) -> str:
-        message = str(exc)
-        if "429" in message or "quota" in message.lower():
+        message = str(exc).strip() or exc.__class__.__name__
+        cause = getattr(exc, "__cause__", None) or getattr(exc, "__context__", None)
+        if cause and str(cause).strip() and str(cause).strip() not in message:
+            message = f"{message} ({type(cause).__name__}: {str(cause).strip()})"
+        lowered = message.lower()
+        if "429" in message or "quota" in lowered:
             return (
                 "OpenAI rejected the request — your API key works, but the account "
                 "has no credits or billing set up. Add payment at platform.openai.com/settings/billing"
             )
-        if "401" in message or "invalid" in message.lower() and "api key" in message.lower():
-            return "OpenAI rejected the API key — check it is correct in your .env file."
-        return f"OpenAI meal planning failed: {message[:200]}"
+        if "401" in message or ("invalid" in lowered and "api key" in lowered):
+            return "OpenAI rejected the API key — check it is correct in your .env / host env."
+        if "connection" in lowered:
+            return (
+                "OpenAI meal planning failed: server could not reach api.openai.com. "
+                f"Details: {message[:240]}"
+            )
+        return f"OpenAI meal planning failed: {message[:240]}"
 
     async def _generate_with_llm(self, profile: UserProfile) -> MealPlan:
         from openai import AsyncOpenAI
@@ -584,10 +593,17 @@ class MealPlanner:
         plan = _build_plan_shopping_list(plan, profile)
 
         chef = chef or get_chef(profile.chef_id)
-        notes = (
-            f"Offline fallback from {chef.name} ({chef.title}) — fixed template meals. "
-            "Add OPENAI_API_KEY to .env for full AI meal planning (Sam uses AI too when configured)."
-        )
+        if self.api_key:
+            notes = (
+                f"Offline fallback from {chef.name} ({chef.title}) — fixed template meals. "
+                "OPENAI_API_KEY is set, but the API server could not complete the OpenAI request."
+            )
+        else:
+            notes = (
+                f"Offline fallback from {chef.name} ({chef.title}) — fixed template meals. "
+                "Add OPENAI_API_KEY to .env (local) or the host env (Render) for full AI meal planning "
+                "(Sam uses AI too when configured)."
+            )
         if llm_error:
             notes = f"{llm_error}\n\nUsing template meals for now.\n\n{notes}"
         plan.chef_notes = notes

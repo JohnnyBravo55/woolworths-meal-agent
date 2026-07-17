@@ -18,6 +18,8 @@ def test_health_open_when_gate_enabled(monkeypatch):
     client = TestClient(app)
     res = client.get("/api/health")
     assert res.status_code == 200
+    openai_probe = client.get("/api/health/openai")
+    assert openai_probe.status_code == 200
 
 
 def test_api_requires_access_code(monkeypatch):

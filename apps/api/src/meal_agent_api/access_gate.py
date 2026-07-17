@@ -16,6 +16,7 @@ ACCESS_CODE_HEADER = "X-Access-Code"
 _OPEN_PATHS = frozenset(
     {
         "/api/health",
+        "/api/health/openai",
         "/docs",
         "/openapi.json",
         "/redoc",

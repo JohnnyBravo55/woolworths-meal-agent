@@ -167,6 +167,48 @@ async def health():
     }
 
 
+@app.get("/api/health/openai")
+async def health_openai():
+    """Probe outbound connectivity to OpenAI (no secrets returned)."""
+    load_dotenv(PROJECT_ROOT / ".env", override=True)
+    api_key = os.environ.get("OPENAI_API_KEY", "").strip()
+    model = os.environ.get("OPENAI_MODEL", "gpt-4o-mini").strip() or "gpt-4o-mini"
+    if not api_key:
+        return {
+            "status": "error",
+            "openai_configured": False,
+            "openai_model": model,
+            "reachable": False,
+            "error": "OPENAI_API_KEY is not set on this server",
+        }
+
+    try:
+        from openai import AsyncOpenAI
+
+        client = AsyncOpenAI(api_key=api_key, timeout=20.0, max_retries=0)
+        await client.models.list()
+        return {
+            "status": "ok",
+            "openai_configured": True,
+            "openai_model": model,
+            "reachable": True,
+            "error": None,
+        }
+    except Exception as exc:
+        cause = getattr(exc, "__cause__", None) or getattr(exc, "__context__", None)
+        detail = str(exc).strip() or exc.__class__.__name__
+        if cause and str(cause).strip():
+            detail = f"{detail} | cause={type(cause).__name__}: {str(cause).strip()}"
+        return {
+            "status": "error",
+            "openai_configured": True,
+            "openai_model": model,
+            "reachable": False,
+            "error": detail[:500],
+            "error_type": type(exc).__name__,
+        }
+
+
 # --- Auth (Phase 2) ---
 
 

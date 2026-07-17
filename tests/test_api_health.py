@@ -24,3 +24,15 @@ def test_health_openai_not_configured(monkeypatch):
     res = client.get("/api/health")
     assert res.status_code == 200
     assert res.json()["openai_configured"] is False
+
+
+def test_health_openai_probe_reports_missing_key(monkeypatch):
+    monkeypatch.setenv("OPENAI_API_KEY", "")
+    monkeypatch.setattr("meal_agent_api.main.load_dotenv", lambda *a, **k: None)
+    client = TestClient(app)
+    res = client.get("/api/health/openai")
+    assert res.status_code == 200
+    body = res.json()
+    assert body["openai_configured"] is False
+    assert body["reachable"] is False
+    assert "OPENAI_API_KEY" in body["error"]
