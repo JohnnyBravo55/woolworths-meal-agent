@@ -261,6 +261,8 @@ export function createApiClient(config: ApiClientConfig) {
         body: JSON.stringify(answers),
       }),
 
+    getPlan: () => jsonFetch<{ meal_plan: MealPlan }>("/api/plan"),
+
     approvePlan: () =>
       jsonFetch<{ meals: unknown[]; dinners: unknown[]; state: AppState }>("/api/plan/approve", {
         method: "POST",

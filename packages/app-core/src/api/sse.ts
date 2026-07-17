@@ -85,7 +85,11 @@ export function streamSSEViaXHR(
 
     xhr.onerror = () => reject(new Error("Stream failed: network error"));
     xhr.ontimeout = () =>
-      reject(new Error("Stream failed: timed out — try again or check your PC API is running"));
+      reject(
+        new Error(
+          "Stream failed: timed out — meal planning took too long. Wait a moment and try again.",
+        ),
+      );
 
     xhr.send(body ?? null);
   });

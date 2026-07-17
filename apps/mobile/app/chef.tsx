@@ -17,6 +17,7 @@ import { Badge } from "@/components/ui/Badge";
 import { ParallelLoadingModal } from "@/components/ParallelLoadingModal";
 import { theme } from "@/constants/theme";
 import { api, getApiBaseUrl } from "@/lib/api";
+import { isHostedApiUrl } from "@/lib/config";
 import { confirmSessionLoss } from "@/lib/confirm-session-loss";
 import { needsMobileWoolworthsSignIn } from "@/lib/woolworths-mobile";
 import { useWizardNav } from "@/lib/useWizardNav";
@@ -109,6 +110,7 @@ export default function ChefScreen() {
     try {
       await api.setProfile({ ...answers, chef_id: selectedChefId });
       let completed = false;
+      let streamError = "";
       await api.streamSSE("/api/plan/generate", (event, data) => {
         if (event === "status") {
           setPlanProgress({
@@ -133,10 +135,41 @@ export default function ChefScreen() {
             goToPlan();
           }
         }
-        if (event === "error") setError(String(data.message));
+        if (event === "error") {
+          streamError = String(data.message || "Meal plan failed");
+          setError(streamError);
+        }
       });
       if (!completed) {
-        setError("Meal plan ended early — check your PC API is running.");
+        // Plan may already be saved on the API even if the SSE "complete" event was dropped.
+        try {
+          const recovered = await api.getPlan();
+          const state = await api.getState();
+          if (recovered.meal_plan) {
+            completed = true;
+            setMealPlan(recovered.meal_plan);
+            setPlanChefId(selectedChefId);
+            setSessionBaseline({ ...answers, chef_id: selectedChefId });
+            setShopList(null);
+            setAppState(state as never);
+            setPlanReady(true);
+            markStepReached(2);
+            setGenerating(false);
+            setLoading(false);
+            if (!woolworthsOpenRef.current) goToPlan();
+          }
+        } catch {
+          /* no plan on server yet */
+        }
+      }
+      if (!completed) {
+        if (!streamError) {
+          setError(
+            isHostedApiUrl(getApiBaseUrl())
+              ? "Meal plan stream ended early — the hosted API may have dropped the connection. Wait a few seconds and try again."
+              : "Meal plan ended early — check meal-agent-api is running on port 8000.",
+          );
+        }
         woolworthsOpenRef.current = false;
         setWoolworthsOpen(false);
         setGenerating(false);
@@ -173,15 +206,18 @@ export default function ChefScreen() {
       {openAiReady === true && (
         <View style={styles.aiBannerOk}>
           <Text style={styles.aiBannerOkText}>
-            AI meal plans via your PC API ({openAiModel}) — same OpenAI key as desktop.
+            {isHostedApiUrl(apiBase)
+              ? `AI meal plans via hosted API (${openAiModel}).`
+              : `AI meal plans via your PC API (${openAiModel}) — same OpenAI key as desktop.`}
           </Text>
         </View>
       )}
       {openAiReady === false && (
         <View style={styles.aiBannerWarn}>
           <Text style={styles.aiBannerWarnText}>
-            OpenAI not configured on your PC. Add OPENAI_API_KEY to woolworths-meal-agent\.env and
-            restart meal-agent-api — the phone uses that same server.
+            {isHostedApiUrl(apiBase)
+              ? "OpenAI is not configured on the hosted API. Set OPENAI_API_KEY on Render and redeploy."
+              : "OpenAI not configured on your PC. Add OPENAI_API_KEY to woolworths-meal-agent\\.env and restart meal-agent-api — the phone uses that same server."}
           </Text>
         </View>
       )}

@@ -11,7 +11,8 @@ import { Badge } from "@/components/ui/Badge";
 import { ParallelLoadingModal } from "@/components/ParallelLoadingModal";
 import { WoolworthsWebConnectModal } from "@/components/WoolworthsWebConnectModal";
 import { theme } from "@/constants/theme";
-import { api } from "@/lib/api";
+import { api, getApiBaseUrl } from "@/lib/api";
+import { isHostedApiUrl } from "@/lib/config";
 import { needsWoolworthsSignInBeforeShop } from "@/lib/woolworths-mobile";
 import { useWizardNav } from "@/lib/useWizardNav";
 import type { ResolvedGroceryList } from "@meal-agent/app-core";
@@ -92,7 +93,13 @@ export default function RecipesScreen() {
           }
           if (event === "error") setError(String(data.message));
         });
-        if (!completed) setError("Product search ended early — check API is running.");
+        if (!completed) {
+          setError(
+            isHostedApiUrl(getApiBaseUrl())
+              ? "Product search ended early — the hosted API may have dropped the connection. Try again."
+              : "Product search ended early — check meal-agent-api is running on port 8000.",
+          );
+        }
       } catch (e) {
         setError(e instanceof Error ? e.message : "Product search failed");
       } finally {

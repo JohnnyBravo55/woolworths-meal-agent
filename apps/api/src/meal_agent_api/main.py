@@ -592,7 +592,22 @@ async def plan_generate(
             {"message": "Consulting your chef…", "done": 2, "total": 5, "phase": "generate"},
         )
         try:
-            plan = await session.orchestrator.generate_plan(profile)
+            # Heartbeats while the LLM runs — keeps proxies from closing idle SSE streams.
+            task = asyncio.create_task(session.orchestrator.generate_plan(profile))
+            while not task.done():
+                try:
+                    await asyncio.wait_for(asyncio.shield(task), timeout=8.0)
+                except asyncio.TimeoutError:
+                    yield _sse_event(
+                        "status",
+                        {
+                            "message": "Still cooking with your chef…",
+                            "done": 3,
+                            "total": 5,
+                            "phase": "generate",
+                        },
+                    )
+            plan = await task
             yield _sse_event(
                 "status",
                 {"message": "Balancing meals & building shop list…", "done": 4, "total": 5},
