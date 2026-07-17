@@ -47,6 +47,14 @@ export function isHostedApiUrl(url: string): boolean {
   }
 }
 
+/**
+ * Web builds never show Woolworths connect / real trolley — Coming soon cart only.
+ * Native iOS/Android keep Connect. Local PC trolley: use phone Expo Go or CLI `meal-agent login`.
+ */
+export function isHostedWebSession(): boolean {
+  return Platform.OS === "web";
+}
+
 /** API base URL — EXPO_PUBLIC_API_URL, or auto LAN IP in Expo Go dev. */
 export function getApiBaseUrl(): string {
   const port = getApiPort();

@@ -11,21 +11,21 @@ Ship a shareable webpage for early testers to run the full product flow (prefere
 
 | Topic | Choice |
 |-------|--------|
-| Tester scope | Full flow (A), not plan-only or static mock |
+| Tester scope | Preferences → plan → shop list; supermarket cart fill is coming soon on hosted (local keeps full trolley) |
 | Hosting cost | Free tier: static frontend + Render free API (may sleep / cold-start) |
 | Woolworths accounts | Each tester connects their own account |
 | Access control | Shared code `usertest1` (UI + API), not link-obscurity alone |
 | Repo | GitHub as source of truth and Pages deploy source (public on free plan so Pages works; access code still gates the app) |
 | Frontend | Expo web static export (`apps/mobile`) on GitHub Pages |
 | Backend | FastAPI (`meal-agent-api`) on Render free + persistent disk for `data/` |
-| Hosted Woolworths connect | Bookmarklet / paste Cookie header (iframe cannot read WW cookies) |
+| Hosted Woolworths connect | Deferred — cart step shows Coming soon (Woolworths / FreshChoice / New World). Local PC still uses browser cookie import |
 
 ## Architecture
 
 - **GitHub Pages** serves the Expo web static build.
 - **Render** runs the Python API; env holds `OPENAI_API_KEY`, `MEAL_AGENT_ACCESS_CODE`, `MEAL_AGENT_CORS_ORIGINS`.
 - Frontend calls API via bake-in `EXPO_PUBLIC_API_URL` and sends `X-Session-Id` + `X-Access-Code`.
-- Woolworths cookies for hosted web use the Meal Agent browser extension (Chrome/Edge/Firefox/Safari Mac) for one-click connect; bookmarklet / Cookie paste remain as advanced fallback.
+- Hosted cart step is a Coming soon teaser (no cookie bridge / trolley add). Local builds keep Connect → Add to trolley.
 - In-memory wizard sessions may reset on Render sleep/redeploy (accepted for v1).
 
 ## Access code
@@ -44,4 +44,4 @@ Ship a shareable webpage for early testers to run the full product flow (prefere
 
 ## Acceptance
 
-A tester on another network completes plan → shop → connect own Woolworths → trolley add using the public link + `usertest1`, with at most a cold-start delay after idle. API rejects requests without the code.
+A tester on another network completes preferences → plan → shop and sees **Fill shopping cart, coming soon** using the public link + `usertest1`, with at most a cold-start delay after idle. API rejects requests without the code. Local / meal-eval `--cart` still validates real trolley.

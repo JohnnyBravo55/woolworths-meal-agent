@@ -74,7 +74,7 @@ export default function PlanScreen() {
           }
         }}
       />
-      <Button title="Approve plan →" onPress={approve} loading={loading} />
+      <Button title="Approve plan →" onPress={approve} loading={loading} testID="plan-approve" />
     </>
   );
 

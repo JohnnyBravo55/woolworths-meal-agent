@@ -198,6 +198,8 @@ export default function DiscoveryScreen() {
               }}
               placeholder="Leave blank for no hard budget"
               placeholderTextColor={theme.placeholder}
+              testID="discovery-budget"
+              accessibilityLabel="Weekly budget NZD"
             />
           </Field>
           <Field label="Mandatory items (comma-separated, optional)">
@@ -225,6 +227,8 @@ export default function DiscoveryScreen() {
               onChangeText={(t) => set({ likes: t })}
               placeholder="chicken, pasta, japanese"
               placeholderTextColor={theme.placeholder}
+              testID="discovery-likes"
+              accessibilityLabel="Likes"
             />
           </Field>
           <Field label="Dislikes (comma-separated)">
@@ -234,6 +238,8 @@ export default function DiscoveryScreen() {
               onChangeText={(t) => set({ dislikes: t })}
               placeholder="lamb, coriander"
               placeholderTextColor={theme.placeholder}
+              testID="discovery-dislikes"
+              accessibilityLabel="Dislikes"
             />
           </Field>
           <Field label="Other instructions">
@@ -282,7 +288,12 @@ export default function DiscoveryScreen() {
         ) : (
           <View />
         )}
-        <Button title="Continue to chef →" onPress={continueNext} loading={loading} />
+        <Button
+          title="Continue to chef →"
+          onPress={continueNext}
+          loading={loading}
+          testID="discovery-continue"
+        />
       </ActionBar>
     </WizardShell>
   );

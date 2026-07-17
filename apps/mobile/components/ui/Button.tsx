@@ -10,6 +10,8 @@ export function Button({
   variant = "primary",
   loading,
   style,
+  testID,
+  accessibilityLabel,
 }: {
   title: string;
   onPress: () => void;
@@ -17,6 +19,8 @@ export function Button({
   variant?: Variant;
   loading?: boolean;
   style?: ViewStyle;
+  testID?: string;
+  accessibilityLabel?: string;
 }) {
   const bg =
     variant === "primary" ? theme.green : variant === "secondary" ? theme.white : "transparent";
@@ -27,6 +31,8 @@ export function Button({
     <Pressable
       onPress={onPress}
       disabled={disabled || loading}
+      testID={testID}
+      accessibilityLabel={accessibilityLabel ?? title}
       style={({ pressed }) => [
         styles.btn,
         Platform.OS === "web" && styles.btnWeb,

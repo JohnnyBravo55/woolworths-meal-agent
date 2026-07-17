@@ -15,11 +15,34 @@ h1 {
   margin: 0 0 8px;
 }
 
+.ver {
+  font-size: 11px;
+  font-weight: 600;
+  color: #6b7f74;
+}
+
 #status {
   font-size: 13px;
   line-height: 1.35;
   margin: 0 0 12px;
   color: #3d5248;
+  min-height: 2.7em;
+  padding: 8px 10px;
+  border-radius: 8px;
+  background: #eef3ef;
+  border: 1px solid #d5e0d8;
+}
+
+#status[data-kind="ok"] {
+  color: #14532d;
+  background: #dcfce7;
+  border-color: #86efac;
+}
+
+#status[data-kind="err"] {
+  color: #7f1d1d;
+  background: #fee2e2;
+  border-color: #fca5a5;
 }
 
 button {

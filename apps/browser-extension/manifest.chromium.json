@@ -1,7 +1,7 @@
 {
   "manifest_version": 3,
   "name": "Meal Agent — Woolworths Connect",
-  "version": "1.0.0",
+  "version": "1.0.1",
   "description": "One-click Woolworths NZ session connect for the Meal Agent hosted app.",
   "icons": {
     "16": "icons/icon-16.png",
@@ -21,7 +21,7 @@
   "background": {
     "service_worker": "background.js"
   },
-  "permissions": ["cookies", "storage"],
+  "permissions": ["cookies", "storage", "tabs", "scripting"],
   "host_permissions": [
     "https://*.woolworths.co.nz/*",
     "https://woolworths.co.nz/*",
@@ -32,7 +32,8 @@
     "http://127.0.0.1:5173/*",
     "http://localhost:5173/*",
     "http://127.0.0.1:8081/*",
-    "http://localhost:8081/*"
+    "http://localhost:8081/*",
+    "http://127.0.0.1:7535/*"
   ],
   "content_scripts": [
     {

@@ -308,6 +308,7 @@ export default function ChefScreen() {
           onPress={runGenerate}
           loading={generating}
           disabled={!selectedChefId || woolworthsOpen}
+          testID="chef-generate"
         />
       </ActionBar>
     </WizardShell>

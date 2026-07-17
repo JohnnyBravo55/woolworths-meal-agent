@@ -3,6 +3,7 @@ import * as WebBrowser from "expo-web-browser";
 import { useCallback, useEffect, useRef } from "react";
 import { Platform, StyleSheet, Text, View } from "react-native";
 import { WizardShell } from "@/components/WizardShell";
+import { HostedCartComingSoon } from "@/components/HostedCartComingSoon";
 import { useApp } from "@/context/AppProvider";
 import { Button } from "@/components/ui/Button";
 import { ActionBar } from "@/components/ActionBar";
@@ -15,6 +16,8 @@ import { needsWoolworthsSignInForCart } from "@/lib/woolworths-mobile";
 export default function CartScreen() {
   const router = useRouter();
   const { autoAdd } = useLocalSearchParams<{ autoAdd?: string }>();
+  // Web: Coming soon only. Native keeps real Add to trolley.
+  const webComingSoon = Platform.OS === "web";
   const {
     cartResult,
     setCartResult,
@@ -29,6 +32,7 @@ export default function CartScreen() {
 
   const runAddToCart = useCallback(
     async (opts: { allow_over_budget?: boolean; export_only?: boolean }) => {
+      if (webComingSoon) return;
       setError("");
 
       if (!opts.export_only) {
@@ -75,15 +79,16 @@ export default function CartScreen() {
         setLoading(false);
       }
     },
-    [refreshWoolworths, router, setCartProgress, setCartResult, setError, setLoading],
+    [webComingSoon, refreshWoolworths, router, setCartProgress, setCartResult, setError, setLoading],
   );
 
   useEffect(() => {
+    if (webComingSoon) return;
     if (autoAdd === "1" && !autoAddRan.current) {
       autoAddRan.current = true;
       void runAddToCart({});
     }
-  }, [autoAdd, runAddToCart]);
+  }, [webComingSoon, autoAdd, runAddToCart]);
 
   const openTrolley = async () => {
     const { url } = await api.getCartUrl();
@@ -93,6 +98,21 @@ export default function CartScreen() {
       await WebBrowser.openBrowserAsync(url);
     }
   };
+
+  if (webComingSoon) {
+    return (
+      <WizardShell>
+        <Card>
+          <CardBody>
+            <HostedCartComingSoon />
+          </CardBody>
+        </Card>
+        <ActionBar style={styles.backAction}>
+          <Button title="← Back to shop list" variant="ghost" onPress={() => router.push("/shop")} />
+        </ActionBar>
+      </WizardShell>
+    );
+  }
 
   return (
     <WizardShell>

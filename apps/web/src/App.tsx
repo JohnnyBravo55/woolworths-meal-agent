@@ -1,4 +1,4 @@
-import { useCallback, useEffect, useRef, useState } from "react";
+import { useCallback, useEffect, useState } from "react";
 import {
   canReuseMealPlan,
   needsSessionLossWarning,
@@ -6,33 +6,26 @@ import {
   stepIndexFromPhase,
 } from "@meal-agent/app-core";
 import {
-  addToCart,
   approvePlan,
   approveShop,
   downloadRecipes,
   getAuthMe,
   getState,
-  getWoolworthsStatus,
   listChefs,
   listProfiles,
   loadProfile,
   regeneratePlan,
-  retryCart,
   saveProfile,
   setProfile,
   startSession,
   streamSSE,
-  streamCartAdd,
   swapMeal,
 } from "./api/client";
 import { AuthModal } from "./components/AuthModal";
-import { ConnectModal } from "./components/ConnectModal";
 import { SaveProfileModal } from "./components/SaveProfileModal";
 import { MobileStepper, Stepper } from "./components/Stepper";
-import { WoolworthsStatus } from "./components/WoolworthsStatus";
 import { Button } from "./components/ui/Button";
 import { WizardNav } from "./components/WizardNav";
-import { CartStep } from "./steps/CartStep";
 import { ChefSelectStep } from "./steps/ChefSelectStep";
 import { DiscoveryStep } from "./steps/DiscoveryStep";
 import { MealPlanStep } from "./steps/MealPlanStep";
@@ -40,7 +33,6 @@ import { RecipesStep } from "./steps/RecipesStep";
 import { ShopListStep } from "./steps/ShopListStep";
 import type {
   AppState,
-  CartResult,
   ChefPersona,
   DiscoveryAnswers,
   Meal,
@@ -78,7 +70,6 @@ export default function App() {
   const [mealPlan, setMealPlan] = useState<MealPlan | null>(null);
   const [meals, setMeals] = useState<Meal[]>([]);
   const [shopList, setShopList] = useState<ResolvedGroceryList | null>(null);
-  const [cartResult, setCartResult] = useState<CartResult | null>(null);
   const [profiles, setProfiles] = useState<{ id: string; name: string }[]>([]);
   const [loading, setLoading] = useState(false);
   const [planProgress, setPlanProgress] = useState({
@@ -87,7 +78,6 @@ export default function App() {
     message: "",
   });
   const [error, setError] = useState("");
-  const [connectOpen, setConnectOpen] = useState(false);
   const [authOpen, setAuthOpen] = useState(false);
   const [helpOpen, setHelpOpen] = useState(false);
   const [saveProfileOpen, setSaveProfileOpen] = useState(false);
@@ -99,21 +89,12 @@ export default function App() {
     phase: "",
     message: "",
   });
-  const [cartProgress, setCartProgress] = useState({
-    done: 0,
-    total: 0,
-    ingredient: "",
-    status: "",
-    log: [] as { ingredient: string; status: string; message: string }[],
-  });
   const [chefs, setChefs] = useState<ChefPersona[]>([]);
   const [premiumUnlocked, setPremiumUnlocked] = useState(false);
   const [selectedChefId, setSelectedChefId] = useState("basic_sam");
   const [planChefId, setPlanChefId] = useState<string | null>(null);
-  const [woolworthsKey, setWoolworthsKey] = useState(0);
   const [furthestStep, setFurthestStep] = useState(0);
   const [sessionBaseline, setSessionBaseline] = useState<DiscoveryAnswers | null>(null);
-  const pendingResolveRef = useRef<{ force: boolean } | null>(null);
 
   const markStepReached = useCallback((next: number) => {
     setFurthestStep((prev) => Math.max(prev, next));
@@ -123,7 +104,6 @@ export default function App() {
     setMealPlan(null);
     setMeals([]);
     setShopList(null);
-    setCartResult(null);
     setPlanChefId(null);
     setSessionBaseline(null);
     setFurthestStep(1);
@@ -132,7 +112,6 @@ export default function App() {
   const resetDownstreamFromPlan = useCallback(() => {
     setMeals([]);
     setShopList(null);
-    setCartResult(null);
     setFurthestStep(2);
   }, []);
 
@@ -360,20 +339,7 @@ export default function App() {
       return;
     }
     setError("");
-
-    try {
-      const status = await getWoolworthsStatus();
-      if (!status.connected) {
-        pendingResolveRef.current = { force };
-        setConnectOpen(true);
-        return;
-      }
-    } catch {
-      pendingResolveRef.current = { force };
-      setConnectOpen(true);
-      return;
-    }
-
+    // Web: no Connect Woolworths gate — shop list builds without a session.
     await runResolve(force);
   };
 
@@ -388,60 +354,6 @@ export default function App() {
       setError(e instanceof Error ? e.message : "Approve failed");
     } finally {
       setLoading(false);
-    }
-  };
-
-  const handleAddCart = async (opts: { allow_over_budget?: boolean }) => {
-    setLoading(true);
-    setCartProgress({ done: 0, total: 0, ingredient: "", status: "adding", log: [] });
-    try {
-      const status = await getWoolworthsStatus();
-      if (!status.connected) {
-        setError(
-          status.message ||
-            "Woolworths is not connected — connect and sign in before adding to cart.",
-        );
-        setConnectOpen(true);
-        return;
-      }
-
-      await streamCartAdd((event, data) => {
-        if (event === "status") {
-          setCartProgress((prev) => ({
-            ...prev,
-            total: Number(data.total ?? prev.total),
-            status: "adding",
-          }));
-        }
-        if (event === "progress") {
-          setCartProgress((prev) => ({
-            done: Number(data.done ?? prev.done),
-            total: Number(data.total ?? prev.total),
-            ingredient: String(data.ingredient || ""),
-            status: String(data.status || ""),
-            log: [
-              ...prev.log,
-              {
-                ingredient: String(data.ingredient || ""),
-                status: String(data.status || ""),
-                message: String(data.message || ""),
-              },
-            ],
-          }));
-        }
-        if (event === "complete") {
-          setCartResult(data.result as CartResult);
-          setCartProgress((prev) => ({ ...prev, status: "complete" }));
-        }
-        if (event === "error") setError(String(data.message));
-      }, opts);
-    } catch (e) {
-      setError(e instanceof Error ? e.message : "Cart add failed");
-    } finally {
-      setLoading(false);
-      setCartProgress((prev) =>
-        prev.status === "adding" ? { ...prev, status: "" } : prev,
-      );
     }
   };
 
@@ -481,11 +393,9 @@ export default function App() {
               <MobileStepper current={step} />
             </div>
             <div className="flex flex-wrap items-center gap-2">
-              <WoolworthsStatus
-                key={woolworthsKey}
-                onConnect={() => setConnectOpen(true)}
-                onDisconnect={() => setWoolworthsKey((k) => k + 1)}
-              />
+              <span className="text-xs font-semibold text-slate-500">
+                Supermarket cart fill — coming soon
+              </span>
               <Button variant="ghost" size="sm" onClick={() => setAuthOpen(true)}>
                 Account
               </Button>
@@ -592,7 +502,6 @@ export default function App() {
                 setPlanChefId(selectedChefId);
                 setShopList(null);
                 setMeals([]);
-                setCartResult(null);
                 resetDownstreamFromPlan();
               } finally {
                 setLoading(false);
@@ -676,55 +585,42 @@ export default function App() {
               backLabel="← Back to shop list"
               className="mb-4"
             />
-            <CartStep
-            result={cartResult}
-            exportOnly={false}
-            onAdd={handleAddCart}
-            onRetry={async () => {
-              setLoading(true);
-              try {
-                setCartResult(await retryCart());
-              } finally {
-                setLoading(false);
-              }
-            }}
-            onExportOnly={async () => {
-              setLoading(true);
-              try {
-                setCartResult(await addToCart({ export_only: true }));
-              } finally {
-                setLoading(false);
-              }
-            }}
-            loading={loading}
-            plan={mealPlan}
-            onDownloadRecipes={handleDownloadRecipes}
-            cartProgress={cartProgress}
-            adding={loading && cartProgress.status === "adding"}
-          />
+            <div className="rounded-xl border border-slate-200 bg-white p-8 space-y-5">
+              <div className="text-center space-y-2">
+                <h2 className="text-xl font-bold text-slate-900">Fill shopping cart, coming soon</h2>
+                <p className="text-sm text-slate-600">
+                  Soon you’ll send this list to your supermarket trolley in one tap. For now, use your
+                  shop list — trolley fill is on the way.
+                </p>
+              </div>
+              <div className="grid gap-3 sm:grid-cols-3">
+                {(
+                  [
+                    { name: "Woolworths", color: "bg-[#178841]" },
+                    { name: "FreshChoice", color: "bg-[#F36C00]" },
+                    { name: "New World", color: "bg-[#C8102E]" },
+                  ] as const
+                ).map((r) => (
+                  <button
+                    key={r.name}
+                    type="button"
+                    className={`${r.color} text-white rounded-xl px-4 py-4 font-semibold shadow-sm opacity-95 cursor-default`}
+                    onClick={() => setError(`${r.name} cart fill — coming soon`)}
+                  >
+                    {r.name}
+                    <span className="block text-xs font-medium opacity-90 mt-1">Coming soon</span>
+                  </button>
+                ))}
+              </div>
+            </div>
           </>
         )}
       </main>
 
       <footer className="border-t border-slate-200 bg-white py-3 text-center text-xs text-slate-500">
-        Never auto-checkout — you review and pay on woolworths.co.nz
+        Shop list is ready to review — filling a supermarket trolley is coming soon.
       </footer>
 
-      <ConnectModal
-        open={connectOpen}
-        onClose={() => {
-          setConnectOpen(false);
-          pendingResolveRef.current = null;
-        }}
-        onSuccess={() => {
-          setWoolworthsKey((k) => k + 1);
-          const pending = pendingResolveRef.current;
-          pendingResolveRef.current = null;
-          if (pending) {
-            void runResolve(pending.force);
-          }
-        }}
-      />
       <AuthModal
         open={authOpen}
         onClose={() => setAuthOpen(false)}

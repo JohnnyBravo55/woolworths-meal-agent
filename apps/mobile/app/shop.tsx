@@ -1,6 +1,6 @@
 import { useRouter } from "expo-router";
 import { useEffect, useState } from "react";
-import { FlatList, Pressable, StyleSheet, Text, View } from "react-native";
+import { FlatList, Platform, Pressable, StyleSheet, Text, View } from "react-native";
 import type { GroceryLineItem } from "@meal-agent/app-core";
 import { WizardShell } from "@/components/WizardShell";
 import { useApp } from "@/context/AppProvider";
@@ -82,7 +82,7 @@ export default function ShopScreen() {
       <StepNavBar position="top">{navButtons}</StepNavBar>
       <Card>
         <CardBody>
-          <Text style={styles.summary}>
+          <Text style={styles.summary} testID="shop-summary">
             Will add: ${addableTotal.toFixed(2)} · Manual: ${offlineTotal.toFixed(2)} · Total: $
             {shopList.total.toFixed(2)} / ${shopList.budget_nzd.toFixed(2)}
           </Text>
@@ -102,8 +102,9 @@ export default function ShopScreen() {
       {shopList.items.length > 0 && addable.length === 0 && manual.length > 0 && tab !== "manual" && (
         <View style={styles.banner}>
           <Text style={styles.bannerText}>
-            Items are estimated (not linked to Woolworths yet). Tap Manual ({manual.length}) to see them — sign in
-            at Add to cart for live products.
+            {Platform.OS === "web"
+              ? `Items are estimated prices. Tap Manual (${manual.length}) to review them — filling a supermarket trolley is coming soon.`
+              : `Items are estimated (not linked to Woolworths yet). Tap Manual (${manual.length}) to see them — sign in at Add to cart for live products.`}
           </Text>
         </View>
       )}

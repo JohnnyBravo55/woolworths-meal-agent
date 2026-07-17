@@ -31,6 +31,10 @@ export function WizardShell({ children }: { children: React.ReactNode }) {
   }, [route]);
 
   const onConnect = () => {
+    if (isWeb) {
+      router.push("/cart");
+      return;
+    }
     router.push({ pathname: "/connect-woolworths" });
   };
 
@@ -39,7 +43,15 @@ export function WizardShell({ children }: { children: React.ReactNode }) {
       <View style={[styles.header, isWeb && webLayout?.header]}>
         <View style={isWeb ? webLayout?.page : undefined}>
           <Text style={[styles.title, isWeb && webLayout?.title]}>Woolworths Meal Agent</Text>
-          <WoolworthsStatus refreshKey={woolworthsKey} onConnect={onConnect} showConnectLink={cartStep} />
+          {isWeb ? (
+            <Text style={styles.hostedHint}>Supermarket cart fill — coming soon</Text>
+          ) : (
+            <WoolworthsStatus
+              refreshKey={woolworthsKey}
+              onConnect={onConnect}
+              showConnectLink={cartStep}
+            />
+          )}
           <Stepper currentRoute={String(route)} />
         </View>
       </View>
@@ -64,7 +76,11 @@ export function WizardShell({ children }: { children: React.ReactNode }) {
           <View style={isWeb ? webLayout?.page : undefined}>{children}</View>
         </ScrollView>
       </KeyboardAvoidingView>
-      <Text style={styles.footer}>Never auto-checkout — you review and pay on woolworths.co.nz</Text>
+      <Text style={styles.footer}>
+        {isWeb
+          ? "Shop list is ready to review — filling a supermarket trolley is coming soon."
+          : "Never auto-checkout — you review and pay on woolworths.co.nz"}
+      </Text>
     </SafeAreaView>
   );
 }
@@ -81,6 +97,13 @@ const styles = StyleSheet.create({
     paddingBottom: 12,
   },
   title: { fontSize: 20, fontWeight: "800", color: theme.text },
+  hostedHint: {
+    fontSize: 12,
+    color: theme.textMuted,
+    fontWeight: "600",
+    marginTop: 4,
+    marginBottom: 2,
+  },
   main: { padding: 16, paddingBottom: 160 },
   footer: {
     textAlign: "center",

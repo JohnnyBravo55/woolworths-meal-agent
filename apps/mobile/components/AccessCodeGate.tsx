@@ -87,6 +87,8 @@ export function AccessCodeGate({ children }: { children: React.ReactNode }) {
           autoCapitalize="none"
           autoCorrect={false}
           secureTextEntry
+          testID="access-code-input"
+          accessibilityLabel="Access code"
           onSubmitEditing={() => void onSubmit()}
         />
         {error ? <Text style={styles.error}>{error}</Text> : null}
@@ -94,6 +96,7 @@ export function AccessCodeGate({ children }: { children: React.ReactNode }) {
           title={submitting ? "Checking…" : "Continue"}
           onPress={() => void onSubmit()}
           disabled={submitting || !code.trim()}
+          testID="access-code-continue"
         />
         <Text style={styles.hint}>
           First visit after idle may take up to a minute while the free API wakes up.

@@ -89,7 +89,7 @@ npx expo start
 | Platform | Connect flow |
 |----------|--------------|
 | Local PC / Expo web | API opens your default browser; cookies imported server-side |
-| Hosted Expo web | Install browser extension (Chrome/Edge/Firefox/Safari Mac) → one-click Connect; bookmarklet/paste as advanced fallback |
+| Hosted / Expo web | No Woolworths connect — cart is Coming soon (Woolworths / FreshChoice / New World) |
 | iOS / Android | In-app WebView sign-in → cookies sent to `POST /api/session/woolworths/import-cookies` |
 | View trolley (mobile) | System in-app browser via `expo-web-browser` |
 
@@ -100,7 +100,8 @@ Six-step wizard: **Preferences → Choose Chef → Meal Plan → Recipes → Sho
 - FastAPI backend in `apps/api/` wraps the same orchestrator as the CLI
 - **Expo + React Native** frontend in `apps/mobile/` (primary)
 - Legacy React + Tailwind frontend in `apps/web/` (Vite, deprecated)
-- Connect Woolworths once per session for live pricing and cart adds
+- Web: no Woolworths connect — cart shows **Fill shopping cart, coming soon**
+- Phone: in-app WebView Connect still available
 - Optional account sign-in for hosted multi-user deployments (Phase 2)
 
 ## Project structure
@@ -163,9 +164,9 @@ GitHub Pages requires a **public** repo on the free plan (the access code still 
 
 1. Open the GitHub Pages URL.
 2. Enter access code **`usertest1`**.
-3. Complete preferences → chef → plan → shop.
-4. Connect Woolworths: the page detects your browser and shows install steps. Download the extension zip, load it, sign in on woolworths.co.nz, then click **Connect Woolworths** in the extension. (Advanced: bookmarklet / paste Cookie header.)
-5. Add to trolley.
+3. Complete preferences → chef → plan → recipes → shop list.
+4. Open the cart step to see **Fill shopping cart, coming soon** (Woolworths / FreshChoice / New World). Hosted builds do not connect a Woolworths login or add to trolley yet.
+5. Local developers still test real Connect → Add to trolley against `meal-agent-api` on their PC.
 
 **Secrets stay on Render / GitHub Actions** — never commit `.env`.
 

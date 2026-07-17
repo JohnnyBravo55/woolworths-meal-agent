@@ -1,7 +1,7 @@
 import { useRouter } from "expo-router";
 import { useCallback, useRef, useState } from "react";
 import { Platform, StyleSheet, Text, View } from "react-native";
-import type { Meal } from "@meal-agent/app-core";
+import type { Meal, ResolvedGroceryList } from "@meal-agent/app-core";
 import { WizardShell } from "@/components/WizardShell";
 import { useApp } from "@/context/AppProvider";
 import { Button } from "@/components/ui/Button";
@@ -9,13 +9,11 @@ import { StepNavBar } from "@/components/StepNavBar";
 import { Card, CardBody, CardHeader, H2, Muted } from "@/components/ui/Card";
 import { Badge } from "@/components/ui/Badge";
 import { ParallelLoadingModal } from "@/components/ParallelLoadingModal";
-import { WoolworthsWebConnectModal } from "@/components/WoolworthsWebConnectModal";
 import { theme } from "@/constants/theme";
 import { api, getApiBaseUrl } from "@/lib/api";
 import { isHostedApiUrl } from "@/lib/config";
 import { needsWoolworthsSignInBeforeShop } from "@/lib/woolworths-mobile";
 import { useWizardNav } from "@/lib/useWizardNav";
-import type { ResolvedGroceryList } from "@meal-agent/app-core";
 
 const SLOT_ORDER: Record<string, number> = { breakfast: 0, lunch: 1, snack: 2, dinner: 3 };
 const SLOT_LABEL: Record<string, string> = {
@@ -56,8 +54,8 @@ export default function RecipesScreen() {
   const { showForward, goForward } = useWizardNav();
 
   const [awaitingWoolworths, setAwaitingWoolworths] = useState(false);
-  const [showWebConnect, setShowWebConnect] = useState(false);
   const pendingResolve = useRef<{ force: boolean } | null>(null);
+  const isWeb = Platform.OS === "web";
 
   const byDay = groupByDay(meals);
 
@@ -118,12 +116,10 @@ export default function RecipesScreen() {
     }
     setError("");
 
-    if (await needsWoolworthsSignInBeforeShop()) {
+    // Web: never prompt Connect / extension — go straight to product search.
+    // Phone: still require WebView link when needed.
+    if (!isWeb && (await needsWoolworthsSignInBeforeShop())) {
       pendingResolve.current = { force };
-      if (Platform.OS === "web") {
-        setShowWebConnect(true);
-        return;
-      }
       setAwaitingWoolworths(true);
       return;
     }
@@ -161,20 +157,6 @@ export default function RecipesScreen() {
     }
   };
 
-  const onWebConnected = () => {
-    setShowWebConnect(false);
-    refreshWoolworths();
-    const pending = pendingResolve.current;
-    if (pending) {
-      setLoading(true);
-      setResolveProgress((prev) => ({
-        ...prev,
-        message: "Starting product search…",
-      }));
-      void runResolveSSE(pending.force);
-    }
-  };
-
   const navButtons = (
     <>
       <Button title="← Back" variant="secondary" onPress={() => router.push("/plan")} disabled={loading} />
@@ -186,6 +168,7 @@ export default function RecipesScreen() {
         onPress={() => resolve(!!shopList)}
         loading={loading}
         disabled={awaitingWoolworths}
+        testID="recipes-build-shop"
       />
       {shopList ? (
         <Button title="Continue to shop list →" variant="secondary" onPress={() => router.push("/shop")} />
@@ -195,24 +178,15 @@ export default function RecipesScreen() {
 
   return (
     <WizardShell>
-      <WoolworthsWebConnectModal
-        visible={showWebConnect}
-        onConnected={onWebConnected}
-        onError={setError}
-        onCancel={() => {
-          setShowWebConnect(false);
-          pendingResolve.current = null;
-        }}
-      />
       <ParallelLoadingModal
-        visible={loading || awaitingWoolworths}
+        visible={loading || (!isWeb && awaitingWoolworths)}
         title="Building your shop list"
         message={resolveProgress.message || "Searching Woolworths products…"}
         done={resolveProgress.done}
         total={resolveProgress.total}
         ingredient={resolveProgress.ingredient}
-        showWoolworths={awaitingWoolworths}
-        woolworthsOnly={awaitingWoolworths}
+        showWoolworths={!isWeb && awaitingWoolworths}
+        woolworthsOnly={!isWeb && awaitingWoolworths}
         woolworthsTitle="Connect to Woolworths"
         woolworthsHint="Sign in first — your shop list will build once your account is connected."
         onWoolworthsLinked={onWoolworthsLinked}
@@ -229,8 +203,8 @@ export default function RecipesScreen() {
         </CardHeader>
         <CardBody>
           <Text style={styles.hint}>
-            {Platform.OS === "web"
-              ? "You'll connect Woolworths before product search starts — needed for live prices and cart."
+            {isWeb
+              ? "Build your shop list from these recipes. Filling a supermarket trolley is coming soon."
               : "Connect Woolworths before we build your shop list. Sign in when prompted, then product search begins automatically."}
           </Text>
         </CardBody>

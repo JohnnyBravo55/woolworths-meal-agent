@@ -25,18 +25,13 @@ export async function needsMobileWoolworthsSignIn(): Promise<boolean> {
   return !(await isMobileWoolworthsLinked());
 }
 
+/** Web never gates on Woolworths connect (Coming soon cart). Phone still does. */
 export async function needsWoolworthsSignInBeforeShop(): Promise<boolean> {
-  if (Platform.OS === "web") {
-    try {
-      const s = await api.getWoolworthsStatus();
-      return !s.connected;
-    } catch {
-      return true;
-    }
-  }
+  if (Platform.OS === "web") return false;
   return needsMobileWoolworthsSignIn();
 }
 
 export async function needsWoolworthsSignInForCart(): Promise<boolean> {
+  if (Platform.OS === "web") return false;
   return needsWoolworthsSignInBeforeShop();
 }
