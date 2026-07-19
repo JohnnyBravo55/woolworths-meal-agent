@@ -1,4 +1,4 @@
-"""NDA acceptance endpoint + store."""
+"""NDA acceptance endpoint + Google Sheets webhook."""
 
 from __future__ import annotations
 
@@ -9,7 +9,7 @@ import pytest
 from fastapi.testclient import TestClient
 
 from meal_agent_api.main import app
-from meal_agent_api.nda import NdaStore, send_nda_notification
+from meal_agent_api.nda import NdaAcceptance, NdaStore, append_nda_to_sheet
 
 
 @pytest.fixture()
@@ -39,15 +39,15 @@ def test_nda_accept_requires_name_and_agree(nda_file: Path, monkeypatch: pytest.
     assert not_agreed.status_code == 400
 
 
-def test_nda_accept_stores_and_emails(nda_file: Path, monkeypatch: pytest.MonkeyPatch):
+def test_nda_accept_stores_and_sheets(nda_file: Path, monkeypatch: pytest.MonkeyPatch):
     monkeypatch.delenv("MEAL_AGENT_ACCESS_CODE", raising=False)
     monkeypatch.setenv("MEAL_AGENT_ACCESS_CODE", "")
     sent: list = []
 
-    def fake_send(record) -> None:
+    def fake_sheet(record) -> None:
         sent.append(record)
 
-    monkeypatch.setattr("meal_agent_api.main.send_nda_notification", fake_send)
+    monkeypatch.setattr("meal_agent_api.main.append_nda_to_sheet", fake_sheet)
     client = TestClient(app)
     res = client.post(
         "/api/nda/accept",
@@ -72,7 +72,7 @@ def test_nda_accept_stores_and_emails(nda_file: Path, monkeypatch: pytest.Monkey
 
 def test_nda_accept_gated_by_access_code(nda_file: Path, monkeypatch: pytest.MonkeyPatch):
     monkeypatch.setenv("MEAL_AGENT_ACCESS_CODE", "usertest1")
-    monkeypatch.setattr("meal_agent_api.main.send_nda_notification", lambda _r: None)
+    monkeypatch.setattr("meal_agent_api.main.append_nda_to_sheet", lambda _r: None)
     client = TestClient(app)
 
     denied = client.post(
@@ -89,14 +89,14 @@ def test_nda_accept_gated_by_access_code(nda_file: Path, monkeypatch: pytest.Mon
     assert ok.status_code == 200
 
 
-def test_nda_accept_email_failure_returns_503(nda_file: Path, monkeypatch: pytest.MonkeyPatch):
+def test_nda_accept_sheet_failure_returns_503(nda_file: Path, monkeypatch: pytest.MonkeyPatch):
     monkeypatch.delenv("MEAL_AGENT_ACCESS_CODE", raising=False)
     monkeypatch.setenv("MEAL_AGENT_ACCESS_CODE", "")
 
     def boom(_record) -> None:
-        raise RuntimeError("Resend down")
+        raise RuntimeError("Sheets down")
 
-    monkeypatch.setattr("meal_agent_api.main.send_nda_notification", boom)
+    monkeypatch.setattr("meal_agent_api.main.append_nda_to_sheet", boom)
     client = TestClient(app)
     res = client.post(
         "/api/nda/accept",
@@ -107,31 +107,56 @@ def test_nda_accept_email_failure_returns_503(nda_file: Path, monkeypatch: pytes
     assert len(rows) == 1
 
 
-def test_send_nda_notification_calls_resend(monkeypatch: pytest.MonkeyPatch):
-    monkeypatch.setenv("RESEND_API_KEY", "re_test")
-    monkeypatch.setenv("NDA_FROM_EMAIL", "Beta <onboarding@resend.dev>")
-    monkeypatch.setenv("NDA_NOTIFY_EMAIL", "marcus@pyxstudio.nz")
+def test_append_nda_to_sheet_posts_webhook(monkeypatch: pytest.MonkeyPatch):
+    monkeypatch.setenv("NDA_SHEETS_WEBHOOK_URL", "https://script.google.com/macros/s/fake/exec")
+    monkeypatch.setenv("NDA_SHEETS_SECRET", "test-secret")
 
     calls: list[dict] = []
 
     class FakeResponse:
         status_code = 200
-        text = "ok"
+        text = '{"ok":true}'
+
+        def json(self):
+            return {"ok": True}
 
     def fake_post(url, **kwargs):
         calls.append({"url": url, **kwargs})
         return FakeResponse()
 
     monkeypatch.setattr("meal_agent_api.nda.httpx.post", fake_post)
-    from meal_agent_api.nda import NdaAcceptance
+    record = NdaAcceptance(
+        id="abc",
+        full_name="Jane Tester",
+        nda_version="1",
+        accepted_at="2026-07-20T00:00:00+00:00",
+        user_agent="pytest",
+        client_ip="1.2.3.4",
+    )
+    append_nda_to_sheet(record)
+    assert calls[0]["url"] == "https://script.google.com/macros/s/fake/exec"
+    assert calls[0]["json"]["secret"] == "test-secret"
+    assert calls[0]["json"]["full_name"] == "Jane Tester"
+    assert calls[0]["json"]["client_ip"] == "1.2.3.4"
 
+
+def test_append_nda_to_sheet_rejects_ok_false(monkeypatch: pytest.MonkeyPatch):
+    monkeypatch.setenv("NDA_SHEETS_WEBHOOK_URL", "https://script.google.com/macros/s/fake/exec")
+    monkeypatch.setenv("NDA_SHEETS_SECRET", "test-secret")
+
+    class FakeResponse:
+        status_code = 200
+        text = '{"ok":false,"error":"bad secret"}'
+
+        def json(self):
+            return {"ok": False, "error": "bad secret"}
+
+    monkeypatch.setattr("meal_agent_api.nda.httpx.post", lambda *a, **k: FakeResponse())
     record = NdaAcceptance(
         id="abc",
         full_name="Jane Tester",
         nda_version="1",
         accepted_at="2026-07-20T00:00:00+00:00",
     )
-    send_nda_notification(record)
-    assert calls[0]["url"] == "https://api.resend.com/emails"
-    assert calls[0]["json"]["to"] == ["marcus@pyxstudio.nz"]
-    assert "Jane Tester" in calls[0]["json"]["text"]
+    with pytest.raises(RuntimeError, match="rejected"):
+        append_nda_to_sheet(record)

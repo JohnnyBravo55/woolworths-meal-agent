@@ -20,12 +20,10 @@ services:
         value: "1"
       - key: MEAL_AGENT_RELOAD
         value: "0"
-      - key: RESEND_API_KEY
+      - key: NDA_SHEETS_WEBHOOK_URL
         sync: false
-      - key: NDA_FROM_EMAIL
+      - key: NDA_SHEETS_SECRET
         sync: false
-      - key: NDA_NOTIFY_EMAIL
-        value: marcus@pyxstudio.nz
     disk:
       name: meal-agent-data
       mountPath: /app/data

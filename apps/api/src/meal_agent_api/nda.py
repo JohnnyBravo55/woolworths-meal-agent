@@ -1,4 +1,4 @@
-"""NDA acceptance store + Resend notification for hosted beta testers."""
+"""NDA acceptance store + Google Sheets webhook for hosted beta testers."""
 
 from __future__ import annotations
 
@@ -15,7 +15,6 @@ import httpx
 PROJECT_ROOT = Path(__file__).resolve().parents[4]
 NDA_FILE = PROJECT_ROOT / "data" / "nda_acceptances.json"
 
-DEFAULT_NOTIFY_EMAIL = "marcus@pyxstudio.nz"
 CURRENT_NDA_VERSION = "1"
 
 # Keep in sync with apps/mobile/constants/nda.ts (NDA_VERSION / full prose).
@@ -189,58 +188,50 @@ class NdaStore:
 nda_store = NdaStore()
 
 
-def notify_email() -> str:
-    return os.environ.get("NDA_NOTIFY_EMAIL", DEFAULT_NOTIFY_EMAIL).strip() or DEFAULT_NOTIFY_EMAIL
-
-
-def from_email() -> str | None:
-    value = os.environ.get("NDA_FROM_EMAIL", "").strip()
+def sheets_webhook_url() -> str | None:
+    value = os.environ.get("NDA_SHEETS_WEBHOOK_URL", "").strip()
     return value or None
 
 
-def resend_api_key() -> str | None:
-    value = os.environ.get("RESEND_API_KEY", "").strip()
+def sheets_secret() -> str | None:
+    value = os.environ.get("NDA_SHEETS_SECRET", "").strip()
     return value or None
 
 
-def send_nda_notification(record: NdaAcceptance) -> None:
-    """Send acceptance notice via Resend. Raises RuntimeError on failure."""
-    api_key = resend_api_key()
-    sender = from_email()
-    if not api_key:
-        raise RuntimeError("RESEND_API_KEY is not configured")
-    if not sender:
-        raise RuntimeError("NDA_FROM_EMAIL is not configured")
-
-    to_addr = notify_email()
-    subject = f"Beta NDA accepted — {record.full_name}"
-    body = (
-        f"A tester accepted the Confidential Beta Testing Agreement.\n\n"
-        f"Full legal name: {record.full_name}\n"
-        f"NDA version: {record.nda_version}\n"
-        f"Accepted at (UTC): {record.accepted_at}\n"
-        f"Record id: {record.id}\n"
-        f"User-Agent: {record.user_agent or '(none)'}\n"
-        f"Client IP: {record.client_ip or '(none)'}\n\n"
-        f"--- Agreement text (version {record.nda_version}) ---\n\n"
-        f"{NDA_FULL_TEXT}\n"
-    )
+def append_nda_to_sheet(record: NdaAcceptance) -> None:
+    """Append acceptance to Google Sheet via Apps Script web app. Raises on failure."""
+    url = sheets_webhook_url()
+    secret = sheets_secret()
+    if not url:
+        raise RuntimeError("NDA_SHEETS_WEBHOOK_URL is not configured")
+    if not secret:
+        raise RuntimeError("NDA_SHEETS_SECRET is not configured")
 
     response = httpx.post(
-        "https://api.resend.com/emails",
-        headers={
-            "Authorization": f"Bearer {api_key}",
-            "Content-Type": "application/json",
-        },
+        url,
+        headers={"Content-Type": "application/json"},
         json={
-            "from": sender,
-            "to": [to_addr],
-            "subject": subject,
-            "text": body,
+            "secret": secret,
+            "id": record.id,
+            "full_name": record.full_name,
+            "nda_version": record.nda_version,
+            "accepted_at": record.accepted_at,
+            "user_agent": record.user_agent or "",
+            "client_ip": record.client_ip or "",
         },
         timeout=30.0,
+        follow_redirects=True,
     )
     if response.status_code >= 400:
         raise RuntimeError(
-            f"Resend email failed ({response.status_code}): {response.text[:500]}"
+            f"Google Sheets webhook failed ({response.status_code}): {response.text[:500]}"
+        )
+    # Apps Script often returns 200 with {ok:false} when the secret is wrong.
+    try:
+        payload = response.json()
+    except Exception:
+        payload = None
+    if isinstance(payload, dict) and payload.get("ok") is False:
+        raise RuntimeError(
+            f"Google Sheets webhook rejected the request: {response.text[:500]}"
         )

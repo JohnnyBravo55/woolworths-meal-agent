@@ -133,9 +133,8 @@ tests/             # Unit + integration smoke tests
 | `MEAL_AGENT_ACCESS_CODE` | When set, API requires `X-Access-Code` (hosted testers use `usertest1`) |
 | `MEAL_AGENT_CORS_ORIGINS` | Extra allowed CORS origins (comma-separated), e.g. GitHub Pages URL |
 | `MEAL_AGENT_COOKIE_SECURE` | Set `1` on HTTPS hosts so session cookies use `Secure` + `SameSite=None` |
-| `RESEND_API_KEY` | Resend API key — required to email NDA acceptances (hosted beta) |
-| `NDA_FROM_EMAIL` | Resend “from” address (e.g. `Beta <onboarding@resend.dev>` or a verified domain) |
-| `NDA_NOTIFY_EMAIL` | Where signed NDAs are sent (default: `marcus@pyxstudio.nz`) |
+| `NDA_SHEETS_WEBHOOK_URL` | Google Apps Script web app URL — appends NDA acceptances to your Sheet |
+| `NDA_SHEETS_SECRET` | Shared secret (must match Script property `NDA_SECRET`) |
 
 ## Hosted tester deploy (GitHub Pages + Render free)
 
@@ -150,11 +149,21 @@ Share a public webpage + access code **`usertest1`**. The free Render API may sl
    - `MEAL_AGENT_ACCESS_CODE=usertest1`
    - `MEAL_AGENT_CORS_ORIGINS=https://<you>.github.io` (or `https://<you>.github.io/<repo>` for project Pages)
    - `MEAL_AGENT_COOKIE_SECURE=1`
-   - `RESEND_API_KEY` — from [Resend](https://resend.com) (NDA acceptance emails)
-   - `NDA_FROM_EMAIL` — sender Resend allows (start with `Beta <onboarding@resend.dev>`, or a verified domain)
-   - `NDA_NOTIFY_EMAIL=marcus@pyxstudio.nz` (optional; this is the default)
-4. Attach a disk mounted at `/app/data` (Woolworths session files + `nda_acceptances.json`).
+   - `NDA_SHEETS_WEBHOOK_URL` — Google Apps Script web app URL (see below)
+   - `NDA_SHEETS_SECRET` — long random string (same as Script property `NDA_SECRET`)
+4. Optional: attach a disk at `/app/data` (Woolworths sessions / local NDA mirror). NDA proof for you is the Google Sheet — disk is not required for that.
 5. Note the service URL, e.g. `https://meal-agent-api.onrender.com`.
+
+### 1b. NDA → Google Sheet (free)
+
+Signed NDAs append a row to a spreadsheet you own. Setup:
+
+1. Create a Google Sheet (optional tab name: `Acceptances`; header row: `accepted_at`, `full_name`, `nda_version`, `id`, `client_ip`, `user_agent`).
+2. **Extensions → Apps Script** — paste [`docs/nda-google-sheets-apps-script.js`](docs/nda-google-sheets-apps-script.js), save.
+3. **Project Settings → Script properties** — add `NDA_SECRET` = your secret.
+4. **Deploy → New deployment → Web app** — Execute as: Me; Who has access: Anyone. Copy the URL.
+5. Set Render `NDA_SHEETS_WEBHOOK_URL` + `NDA_SHEETS_SECRET` (same secret). Redeploy the API.
+6. Open the Sheet anytime to see name + time for each acceptance.
 
 ### 2. Frontend on GitHub Pages
 
@@ -170,7 +179,7 @@ GitHub Pages requires a **public** repo on the free plan (the access code still 
 
 1. Open the GitHub Pages URL.
 2. Enter access code **`usertest1`**.
-3. Read the NDA, type your full legal name, tick **I Agree**, then **Accept & Begin Beta Test** (once per browser; a copy is emailed to the owner and stored on the API).
+3. Read the NDA, type your full legal name, tick **I Agree**, then **Accept & Begin Beta Test** (once per browser; name + time are appended to the owner’s Google Sheet).
 4. Complete preferences → chef → plan → recipes → shop list.
 5. Open the cart step to see **Fill shopping cart, coming soon** (Woolworths / FreshChoice / New World). Hosted builds do not connect a Woolworths login or add to trolley yet.
 6. Local developers still test real Connect → Add to trolley against `meal-agent-api` on their PC.

@@ -16,7 +16,7 @@ from fastapi.staticfiles import StaticFiles
 from meal_agent_api.access_gate import AccessCodeMiddleware
 from meal_agent_api.auth import user_store
 from meal_agent_api.deps import AUTH_COOKIE, SESSION_COOKIE, get_optional_user, get_session
-from meal_agent_api.nda import CURRENT_NDA_VERSION, nda_store, send_nda_notification
+from meal_agent_api.nda import CURRENT_NDA_VERSION, append_nda_to_sheet, nda_store
 from meal_agent_api.schemas import (
     AuthLoginRequest,
     AuthRegisterRequest,
@@ -300,12 +300,12 @@ async def nda_accept(body: NdaAcceptRequest, request: Request):
         client_ip=client_ip,
     )
     try:
-        send_nda_notification(record)
+        append_nda_to_sheet(record)
     except Exception as exc:
         raise HTTPException(
             status_code=503,
             detail=(
-                "NDA was recorded but notification email failed. "
+                "NDA could not be saved to the owner spreadsheet. "
                 f"Record id: {record.id}. Please try again or contact the owner."
             ),
         ) from exc
