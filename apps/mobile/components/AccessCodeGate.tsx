@@ -6,7 +6,9 @@ import {
   TextInput,
   View,
 } from "react-native";
+import { NdaGate } from "@/components/NdaGate";
 import { Button } from "@/components/ui/Button";
+import { hasAcceptedNda } from "@/constants/nda";
 import { theme } from "@/constants/theme";
 import {
   accessGateEnabled,
@@ -18,7 +20,8 @@ import { sessionStore } from "@/lib/session-store";
 
 export function AccessCodeGate({ children }: { children: React.ReactNode }) {
   const [checking, setChecking] = useState(true);
-  const [unlocked, setUnlocked] = useState(false);
+  const [codeUnlocked, setCodeUnlocked] = useState(false);
+  const [ndaAccepted, setNdaAccepted] = useState(false);
   const [code, setCode] = useState("");
   const [error, setError] = useState("");
   const [submitting, setSubmitting] = useState(false);
@@ -28,14 +31,16 @@ export function AccessCodeGate({ children }: { children: React.ReactNode }) {
     (async () => {
       if (!accessGateEnabled()) {
         if (!cancelled) {
-          setUnlocked(true);
+          setCodeUnlocked(true);
+          setNdaAccepted(true);
           setChecking(false);
         }
         return;
       }
       const ok = await hasAccessCode();
       if (!cancelled) {
-        setUnlocked(ok);
+        setCodeUnlocked(ok);
+        setNdaAccepted(ok ? hasAcceptedNda() : false);
         setChecking(false);
       }
     })();
@@ -51,7 +56,8 @@ export function AccessCodeGate({ children }: { children: React.ReactNode }) {
       await unlockAccessCode(code);
       // Probe a gated endpoint so bad codes fail before entering the app.
       await api.startSession();
-      setUnlocked(true);
+      setCodeUnlocked(true);
+      setNdaAccepted(hasAcceptedNda());
     } catch (e) {
       const message = e instanceof Error ? e.message : "Invalid access code";
       setError(message);
@@ -69,8 +75,12 @@ export function AccessCodeGate({ children }: { children: React.ReactNode }) {
     );
   }
 
-  if (unlocked) {
+  if (codeUnlocked && ndaAccepted) {
     return <>{children}</>;
+  }
+
+  if (codeUnlocked && !ndaAccepted) {
+    return <NdaGate onAccepted={() => setNdaAccepted(true)} />;
   }
 
   return (

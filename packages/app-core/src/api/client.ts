@@ -314,6 +314,22 @@ export function createApiClient(config: ApiClientConfig) {
       await sessionStore.clearAuthToken();
     },
 
+    acceptNda: (opts: { full_name: string; agreed: boolean; nda_version: string }) =>
+      jsonFetch<{
+        ok: boolean;
+        id: string;
+        full_name: string;
+        nda_version: string;
+        accepted_at: string;
+      }>("/api/nda/accept", {
+        method: "POST",
+        body: JSON.stringify({
+          full_name: opts.full_name,
+          agreed: opts.agreed,
+          nda_version: opts.nda_version,
+        }),
+      }),
+
     exportCsvUrl: () => `${base()}/api/export/csv`,
     exportMarkdownUrl: () => `${base()}/api/export/markdown`,
 

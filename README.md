@@ -133,6 +133,9 @@ tests/             # Unit + integration smoke tests
 | `MEAL_AGENT_ACCESS_CODE` | When set, API requires `X-Access-Code` (hosted testers use `usertest1`) |
 | `MEAL_AGENT_CORS_ORIGINS` | Extra allowed CORS origins (comma-separated), e.g. GitHub Pages URL |
 | `MEAL_AGENT_COOKIE_SECURE` | Set `1` on HTTPS hosts so session cookies use `Secure` + `SameSite=None` |
+| `RESEND_API_KEY` | Resend API key — required to email NDA acceptances (hosted beta) |
+| `NDA_FROM_EMAIL` | Resend “from” address (e.g. `Beta <onboarding@resend.dev>` or a verified domain) |
+| `NDA_NOTIFY_EMAIL` | Where signed NDAs are sent (default: `marcus@pyxstudio.nz`) |
 
 ## Hosted tester deploy (GitHub Pages + Render free)
 
@@ -147,7 +150,10 @@ Share a public webpage + access code **`usertest1`**. The free Render API may sl
    - `MEAL_AGENT_ACCESS_CODE=usertest1`
    - `MEAL_AGENT_CORS_ORIGINS=https://<you>.github.io` (or `https://<you>.github.io/<repo>` for project Pages)
    - `MEAL_AGENT_COOKIE_SECURE=1`
-4. Attach a disk mounted at `/app/data` (Woolworths session files).
+   - `RESEND_API_KEY` — from [Resend](https://resend.com) (NDA acceptance emails)
+   - `NDA_FROM_EMAIL` — sender Resend allows (start with `Beta <onboarding@resend.dev>`, or a verified domain)
+   - `NDA_NOTIFY_EMAIL=marcus@pyxstudio.nz` (optional; this is the default)
+4. Attach a disk mounted at `/app/data` (Woolworths session files + `nda_acceptances.json`).
 5. Note the service URL, e.g. `https://meal-agent-api.onrender.com`.
 
 ### 2. Frontend on GitHub Pages
@@ -164,9 +170,10 @@ GitHub Pages requires a **public** repo on the free plan (the access code still 
 
 1. Open the GitHub Pages URL.
 2. Enter access code **`usertest1`**.
-3. Complete preferences → chef → plan → recipes → shop list.
-4. Open the cart step to see **Fill shopping cart, coming soon** (Woolworths / FreshChoice / New World). Hosted builds do not connect a Woolworths login or add to trolley yet.
-5. Local developers still test real Connect → Add to trolley against `meal-agent-api` on their PC.
+3. Read the NDA, type your full legal name, tick **I Agree**, then **Accept & Begin Beta Test** (once per browser; a copy is emailed to the owner and stored on the API).
+4. Complete preferences → chef → plan → recipes → shop list.
+5. Open the cart step to see **Fill shopping cart, coming soon** (Woolworths / FreshChoice / New World). Hosted builds do not connect a Woolworths login or add to trolley yet.
+6. Local developers still test real Connect → Add to trolley against `meal-agent-api` on their PC.
 
 **Secrets stay on Render / GitHub Actions** — never commit `.env`.
 

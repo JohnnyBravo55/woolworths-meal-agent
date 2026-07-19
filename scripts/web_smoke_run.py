@@ -286,16 +286,34 @@ def run_smoke(
                 print("Unlocking access gate…")
                 gate_input.first.fill(access_code)
                 _click_by_testid_or_text(page, "access-code-continue", "Continue", "Checking…")
-                page.get_by_text("Preferences", exact=True).first.wait_for(
-                    state="visible", timeout=NAV_TIMEOUT_MS
-                )
             else:
                 print("Access gate not shown (already unlocked or gate disabled)")
 
+            prefs = page.get_by_text("Preferences", exact=True)
+            nda_name = page.get_by_test_id("nda-full-name")
+            deadline = time.time() + (NAV_TIMEOUT_MS / 1000.0)
+            saw_nda = False
+            while time.time() < deadline:
+                if nda_name.count() > 0 and nda_name.first.is_visible():
+                    saw_nda = True
+                    break
+                if prefs.count() > 0 and prefs.first.is_visible():
+                    break
+                page.wait_for_timeout(200)
+            if saw_nda:
+                print("Accepting NDA…")
+                nda_name.first.fill("Web Smoke Tester")
+                _click_by_testid_or_text(
+                    page,
+                    "nda-agree",
+                    "I Agree to the Confidential Beta Testing Agreement",
+                )
+                _click_by_testid_or_text(
+                    page, "nda-accept", "Accept & Begin Beta Test", "Submitting…"
+                )
+
             _assert_no_woolworths_connect(page)
-            page.get_by_text("Preferences", exact=True).first.wait_for(
-                state="visible", timeout=NAV_TIMEOUT_MS
-            )
+            prefs.first.wait_for(state="visible", timeout=NAV_TIMEOUT_MS)
 
             print("Filling fabricated preferences…")
             budget = prefs.get("budget_nzd")

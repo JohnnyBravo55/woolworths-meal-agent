@@ -9,13 +9,14 @@ import sys
 from pathlib import Path
 
 from dotenv import load_dotenv
-from fastapi import Depends, FastAPI, HTTPException, Response
+from fastapi import Depends, FastAPI, HTTPException, Request, Response
 from fastapi.middleware.cors import CORSMiddleware
 from fastapi.responses import FileResponse, StreamingResponse
 from fastapi.staticfiles import StaticFiles
 from meal_agent_api.access_gate import AccessCodeMiddleware
 from meal_agent_api.auth import user_store
 from meal_agent_api.deps import AUTH_COOKIE, SESSION_COOKIE, get_optional_user, get_session
+from meal_agent_api.nda import CURRENT_NDA_VERSION, nda_store, send_nda_notification
 from meal_agent_api.schemas import (
     AuthLoginRequest,
     AuthRegisterRequest,
@@ -23,6 +24,7 @@ from meal_agent_api.schemas import (
     CartResultOut,
     DiscoveryAnswers,
     ImportWoolworthsCookiesRequest,
+    NdaAcceptRequest,
     WoolworthsLoginRequest,
     ProfileSaveRequest,
     SessionStartResponse,
@@ -266,6 +268,55 @@ async def auth_me(user=Depends(get_optional_user)):
     if not user:
         return {"authenticated": False}
     return {"authenticated": True, "email": user.email, "user_id": user.id}
+
+
+# --- NDA (hosted beta testers) ---
+
+
+@app.post("/api/nda/accept")
+async def nda_accept(body: NdaAcceptRequest, request: Request):
+    name = body.full_name.strip()
+    if not name:
+        raise HTTPException(status_code=400, detail="Full legal name is required")
+    if not body.agreed:
+        raise HTTPException(status_code=400, detail="You must agree to the Agreement to continue")
+    version = (body.nda_version or "").strip() or CURRENT_NDA_VERSION
+    if version != CURRENT_NDA_VERSION:
+        raise HTTPException(
+            status_code=400,
+            detail=f"Outdated NDA version. Please refresh and accept version {CURRENT_NDA_VERSION}.",
+        )
+
+    client_ip = request.client.host if request.client else None
+    forwarded = request.headers.get("x-forwarded-for")
+    if forwarded:
+        client_ip = forwarded.split(",")[0].strip() or client_ip
+    user_agent = request.headers.get("user-agent")
+
+    record = nda_store.append(
+        full_name=name,
+        nda_version=version,
+        user_agent=user_agent,
+        client_ip=client_ip,
+    )
+    try:
+        send_nda_notification(record)
+    except Exception as exc:
+        raise HTTPException(
+            status_code=503,
+            detail=(
+                "NDA was recorded but notification email failed. "
+                f"Record id: {record.id}. Please try again or contact the owner."
+            ),
+        ) from exc
+
+    return {
+        "ok": True,
+        "id": record.id,
+        "full_name": record.full_name,
+        "nda_version": record.nda_version,
+        "accepted_at": record.accepted_at,
+    }
 
 
 # --- Session ---

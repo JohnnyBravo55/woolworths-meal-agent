@@ -62,6 +62,12 @@ class AuthLoginRequest(BaseModel):
     password: str
 
 
+class NdaAcceptRequest(BaseModel):
+    full_name: str
+    agreed: bool
+    nda_version: str = "1"
+
+
 class CartAddRequest(BaseModel):
     allow_over_budget: bool = False
     export_only: bool = False
