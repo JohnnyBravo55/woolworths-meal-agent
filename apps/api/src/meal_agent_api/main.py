@@ -367,7 +367,10 @@ async def feedback_submit(body: FeedbackSubmitRequest, request: Request):
                 status_code=503,
                 detail=(
                     "Feedback could not be saved to the owner spreadsheet. "
-                    f"Record id: {record.id}. Please try again or contact the owner."
+                    f"Record id: {record.id}. Underlying error: {exc}. "
+                    "If this mentions full_name or Unauthorized, redeploy the "
+                    "Apps Script from docs/nda-google-sheets-apps-script.js "
+                    "(Deploy → Manage deployments → New version)."
                 ),
             ) from exc
 

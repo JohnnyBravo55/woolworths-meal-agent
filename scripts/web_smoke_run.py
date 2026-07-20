@@ -1,11 +1,12 @@
 #!/usr/bin/env python3
-"""Hosted web smoke: preferences → meal plan → shop list (+ plan/shop alignment audit).
+"""Hosted web smoke: preferences → meal plan → shop list (+ optional feedback).
 
 Usage:
   python scripts/web_smoke_run.py
   python scripts/web_smoke_run.py --run-index 1
+  python scripts/web_smoke_run.py --through-feedback
   python scripts/web_smoke_run.py --headed
-  python scripts/web_smoke_run.py --base-url https://johnnybravo55.github.io/woolworths-meal-agent/
+  python scripts/web_smoke_run.py --base-url https://meals.pyxstudio.nz/
 """
 
 from __future__ import annotations
@@ -16,14 +17,24 @@ import json
 import os
 import sys
 import time
+from datetime import datetime, timezone
 from pathlib import Path
 from typing import Any
 from urllib.parse import urlparse
 
 ROOT = Path(__file__).resolve().parents[1]
-DEFAULT_BASE_URL = "https://johnnybravo55.github.io/woolworths-meal-agent/"
+DEFAULT_BASE_URL = "https://meals.pyxstudio.nz/"
 DEFAULT_PREFS = ROOT / "profiles" / "web_smoke_prefs.json"
 DEFAULT_OUT = ROOT / "output" / "web-smoke"
+
+# Distinctive answers so a human can find the Google Sheet row.
+FEEDBACK_ANSWERS = {
+    "meal_plan_useful": "Very useful",
+    "most_valuable": "Shopping list",
+    "use_again": "Very likely",
+    "if_never_public": "Disappointed",
+    "premium_subscribe": "Likely",
+}
 
 # Render cold start + LLM plan + product resolve
 NAV_TIMEOUT_MS = 90_000
@@ -101,11 +112,11 @@ def _fill_by_testid_or_placeholder(
             return
 
 
-def _assert_no_woolworths_connect(page) -> None:
+def _assert_no_woolworths_connect(page, *, allow_cart: bool = False) -> None:
     url = page.url.lower()
     if WW_FORBIDDEN_URL in url:
         raise SmokeFail(f"Navigated to Woolworths connect page: {page.url}")
-    if url.rstrip("/").endswith("/cart"):
+    if not allow_cart and url.rstrip("/").endswith("/cart"):
         raise SmokeFail(f"Navigated to cart (out of scope): {page.url}")
     for text in WW_FORBIDDEN_TEXT:
         loc = page.get_by_text(text, exact=True)
@@ -238,6 +249,58 @@ def _audit_alignment(
     return findings
 
 
+def _submit_feedback(page, *, improve_note: str) -> dict[str, str]:
+    """Fill and submit the Quick feedback modal. Returns the answers used."""
+    # Auto-open after 10s, or click Feedback.
+    deadline = time.monotonic() + 20
+    while time.monotonic() < deadline:
+        if page.get_by_text("Quick feedback", exact=True).count() > 0:
+            break
+        fb_btn = page.get_by_text("Feedback", exact=True)
+        if fb_btn.count() > 0 and fb_btn.first.is_visible():
+            fb_btn.first.click()
+            break
+        time.sleep(0.5)
+    page.get_by_text("Quick feedback", exact=True).first.wait_for(
+        state="visible", timeout=ACTION_TIMEOUT_MS
+    )
+
+    answers = dict(FEEDBACK_ANSWERS)
+    page.get_by_text(answers["meal_plan_useful"], exact=True).first.click()
+    page.get_by_text(answers["most_valuable"], exact=True).first.click()
+    page.get_by_text(answers["use_again"], exact=True).first.click()
+    page.get_by_text(answers["if_never_public"], exact=True).first.click()
+    # "Likely" appears in Q3 and Q5 — pick the last visible match for premium Q5.
+    page.get_by_text(answers["premium_subscribe"], exact=True).last.click()
+
+    improve = page.get_by_placeholder("Share any ideas or issues")
+    if improve.count() > 0:
+        improve.first.fill(improve_note)
+
+    _click_by_testid_or_text(page, "feedback-submit", "Submit")
+    deadline = time.monotonic() + (NAV_TIMEOUT_MS / 1000.0)
+    while time.monotonic() < deadline:
+        thanks = page.get_by_text("Thank you!", exact=True)
+        if thanks.count() > 0 and thanks.first.is_visible():
+            break
+        err = page.locator('[aria-role="alert"], [role="alert"]')
+        if err.count() == 0:
+            # RN web may not expose role=alert; match known error prefix.
+            err = page.get_by_text("Feedback could not be saved", exact=False)
+        if err.count() == 0:
+            err = page.get_by_text("We couldn't submit your feedback", exact=False)
+        if err.count() > 0 and err.first.is_visible():
+            raise SmokeFail(f"Feedback submit failed: {err.first.inner_text()}")
+        time.sleep(0.5)
+    else:
+        raise SmokeFail("Timed out waiting for feedback thank-you or error")
+
+    done = page.get_by_text("Done", exact=True)
+    if done.count() > 0:
+        done.first.click()
+    return {**answers, "improve": improve_note}
+
+
 def run_smoke(
     *,
     base_url: str,
@@ -246,6 +309,8 @@ def run_smoke(
     headed: bool,
     out_dir: Path,
     run_index: int,
+    through_feedback: bool = False,
+    nda_full_name: str = "Web Smoke Tester",
 ) -> None:
     try:
         from playwright.sync_api import sync_playwright
@@ -289,7 +354,7 @@ def run_smoke(
             else:
                 print("Access gate not shown (already unlocked or gate disabled)")
 
-            prefs = page.get_by_text("Preferences", exact=True)
+            prefs_heading = page.get_by_text("Preferences", exact=True)
             nda_name = page.get_by_test_id("nda-full-name")
             deadline = time.time() + (NAV_TIMEOUT_MS / 1000.0)
             saw_nda = False
@@ -297,12 +362,12 @@ def run_smoke(
                 if nda_name.count() > 0 and nda_name.first.is_visible():
                     saw_nda = True
                     break
-                if prefs.count() > 0 and prefs.first.is_visible():
+                if prefs_heading.count() > 0 and prefs_heading.first.is_visible():
                     break
                 page.wait_for_timeout(200)
             if saw_nda:
-                print("Accepting NDA…")
-                nda_name.first.fill("Web Smoke Tester")
+                print(f"Accepting NDA as {nda_full_name!r}…")
+                nda_name.first.fill(nda_full_name)
                 _click_by_testid_or_text(
                     page,
                     "nda-agree",
@@ -312,8 +377,8 @@ def run_smoke(
                     page, "nda-accept", "Accept & Begin Beta Test", "Submitting…"
                 )
 
-            _assert_no_woolworths_connect(page)
-            prefs.first.wait_for(state="visible", timeout=NAV_TIMEOUT_MS)
+            _assert_no_woolworths_connect(page, allow_cart=through_feedback)
+            prefs_heading.first.wait_for(state="visible", timeout=NAV_TIMEOUT_MS)
 
             print("Filling fabricated preferences…")
             budget = prefs.get("budget_nzd")
@@ -400,7 +465,7 @@ def run_smoke(
             url_now = page.url.lower()
             if WW_FORBIDDEN_URL in url_now:
                 raise SmokeFail(f"Ended on connect page: {page.url}")
-            if url_now.rstrip("/").endswith("/cart"):
+            if not through_feedback and url_now.rstrip("/").endswith("/cart"):
                 raise SmokeFail(f"Ended on cart page: {page.url}")
 
             print("PASS (UI): shop list reached without Woolworths login.")
@@ -446,13 +511,14 @@ def run_smoke(
                 f"coverage={len(findings.get('shop_coverage') or [])}"
             )
 
-            result = {
+            result: dict[str, Any] = {
                 "ok": bool(findings.get("passed")),
                 "url": page.url,
                 "prefs": prefs,
                 "base_url": base_url,
                 "api_base": api_base,
                 "session_id": session_id,
+                "nda_full_name": nda_full_name if saw_nda else None,
                 "audit": {
                     "passed": findings.get("passed"),
                     "issue_count": findings.get("issue_count"),
@@ -464,17 +530,41 @@ def run_smoke(
                     "shop_coverage": findings.get("shop_coverage"),
                 },
             }
-            (out_dir / "result.json").write_text(
-                json.dumps(result, indent=2) + "\n", encoding="utf-8"
-            )
 
             if not findings.get("passed"):
+                (out_dir / "result.json").write_text(
+                    json.dumps(result, indent=2) + "\n", encoding="utf-8"
+                )
                 raise SmokeFail(
                     f"Plan/shop misaligned ({findings.get('issue_count')} issue(s)) — "
                     f"see {out_dir / 'audit_report.md'}"
                 )
 
             print("PASS: shop list reached and plan/shop align.")
+
+            if through_feedback:
+                print("Continuing to cart / feedback…")
+                _click_by_testid_or_text(
+                    page, "shop-approve", "Approve & continue →"
+                )
+                page.get_by_text("Fill shopping cart, coming soon", exact=False).first.wait_for(
+                    state="visible", timeout=NAV_TIMEOUT_MS
+                )
+                _assert_no_woolworths_connect(page, allow_cart=True)
+                stamp = datetime.now(timezone.utc).strftime("%Y-%m-%d %H:%M UTC")
+                improve_note = (
+                    f"E2E sheet check {stamp} — Playwright beta feedback "
+                    f"(session {session_id[:8]})"
+                )
+                print(f"Submitting feedback ({improve_note})…")
+                feedback = _submit_feedback(page, improve_note=improve_note)
+                result["feedback"] = feedback
+                result["url"] = page.url
+                print("PASS: feedback submitted.")
+
+            (out_dir / "result.json").write_text(
+                json.dumps(result, indent=2) + "\n", encoding="utf-8"
+            )
         except Exception as e:
             shot = out_dir / "failure.png"
             try:
@@ -517,6 +607,16 @@ def main(argv: list[str] | None = None) -> int:
     parser.add_argument("--out-dir", type=Path, default=None)
     parser.add_argument("--run-index", type=int, default=1)
     parser.add_argument("--headed", action="store_true", help="Show browser window")
+    parser.add_argument(
+        "--through-feedback",
+        action="store_true",
+        help="Continue past shop to cart coming-soon and submit the feedback survey",
+    )
+    parser.add_argument(
+        "--nda-name",
+        default="Cursor E2E Sheet Check",
+        help="Full legal name entered on the NDA gate",
+    )
     args = parser.parse_args(argv)
 
     out_dir = args.out_dir or (DEFAULT_OUT / f"run-{args.run_index:03d}")
@@ -529,6 +629,8 @@ def main(argv: list[str] | None = None) -> int:
             headed=args.headed,
             out_dir=out_dir,
             run_index=args.run_index,
+            through_feedback=args.through_feedback,
+            nda_full_name=args.nda_name,
         )
         return 0
     except SmokeFail as e:
