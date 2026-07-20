@@ -1,5 +1,12 @@
-import { useState } from "react";
+import { useEffect, useState } from "react";
 import { Pressable, StyleSheet, Text, View } from "react-native";
+import { FeedbackModal } from "@/components/FeedbackModal";
+import { Button } from "@/components/ui/Button";
+import {
+  FEEDBACK_AUTO_OPEN_MS,
+  FEEDBACK_DISMISSED_VISIT_KEY,
+  FEEDBACK_SUBMITTED_KEY,
+} from "@/constants/feedback";
 import { theme } from "@/constants/theme";
 
 const RETAILERS = [
@@ -8,15 +15,55 @@ const RETAILERS = [
   { id: "new-world", name: "New World", color: "#C8102E" },
 ] as const;
 
+function readStorage(storage: Storage | undefined, key: string): boolean {
+  try {
+    return storage?.getItem(key) === "1";
+  } catch {
+    return false;
+  }
+}
+
+function writeStorage(storage: Storage | undefined, key: string): void {
+  try {
+    storage?.setItem(key, "1");
+  } catch {
+    // Storage can be unavailable; keep feedback usable.
+  }
+}
+
 /**
  * Hosted-only cart teaser: no Woolworths connect / add-to-trolley.
  * Local builds use the real cart screen instead.
  */
 export function HostedCartComingSoon() {
   const [toast, setToast] = useState("");
+  const [feedbackOpen, setFeedbackOpen] = useState(false);
+
+  useEffect(() => {
+    if (typeof window === "undefined") return;
+    if (readStorage(window.localStorage, FEEDBACK_SUBMITTED_KEY)) return;
+    if (readStorage(window.sessionStorage, FEEDBACK_DISMISSED_VISIT_KEY)) return;
+
+    const timer = setTimeout(() => setFeedbackOpen(true), FEEDBACK_AUTO_OPEN_MS);
+    return () => clearTimeout(timer);
+  }, []);
 
   const onPressRetailer = (name: string) => {
     setToast(`${name} cart fill — coming soon`);
+  };
+
+  const closeFeedback = () => {
+    setFeedbackOpen(false);
+    if (typeof window !== "undefined") {
+      writeStorage(window.sessionStorage, FEEDBACK_DISMISSED_VISIT_KEY);
+    }
+  };
+
+  const onSubmitted = () => {
+    setFeedbackOpen(false);
+    if (typeof window !== "undefined") {
+      writeStorage(window.localStorage, FEEDBACK_SUBMITTED_KEY);
+    }
   };
 
   return (
@@ -47,7 +94,15 @@ export function HostedCartComingSoon() {
         ))}
       </View>
 
+      <Button title="Feedback" onPress={() => setFeedbackOpen(true)} />
+
       {toast ? <Text style={styles.toast}>{toast}</Text> : null}
+
+      <FeedbackModal
+        visible={feedbackOpen}
+        onClose={closeFeedback}
+        onSubmitted={onSubmitted}
+      />
     </View>
   );
 }
