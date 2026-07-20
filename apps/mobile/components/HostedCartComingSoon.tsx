@@ -1,4 +1,4 @@
-import { useEffect, useState } from "react";
+import { useEffect, useRef, useState } from "react";
 import { Pressable, StyleSheet, Text, View } from "react-native";
 import { FeedbackModal } from "@/components/FeedbackModal";
 import { Button } from "@/components/ui/Button";
@@ -38,14 +38,27 @@ function writeStorage(storage: Storage | undefined, key: string): void {
 export function HostedCartComingSoon() {
   const [toast, setToast] = useState("");
   const [feedbackOpen, setFeedbackOpen] = useState(false);
+  const autoOpenTimerRef = useRef<ReturnType<typeof setTimeout> | null>(null);
+
+  const clearAutoOpenTimer = () => {
+    if (autoOpenTimerRef.current !== null) {
+      clearTimeout(autoOpenTimerRef.current);
+      autoOpenTimerRef.current = null;
+    }
+  };
 
   useEffect(() => {
     if (typeof window === "undefined") return;
     if (readStorage(window.localStorage, FEEDBACK_SUBMITTED_KEY)) return;
     if (readStorage(window.sessionStorage, FEEDBACK_DISMISSED_VISIT_KEY)) return;
 
-    const timer = setTimeout(() => setFeedbackOpen(true), FEEDBACK_AUTO_OPEN_MS);
-    return () => clearTimeout(timer);
+    autoOpenTimerRef.current = setTimeout(() => {
+      autoOpenTimerRef.current = null;
+      if (readStorage(window.localStorage, FEEDBACK_SUBMITTED_KEY)) return;
+      if (readStorage(window.sessionStorage, FEEDBACK_DISMISSED_VISIT_KEY)) return;
+      setFeedbackOpen(true);
+    }, FEEDBACK_AUTO_OPEN_MS);
+    return clearAutoOpenTimer;
   }, []);
 
   const onPressRetailer = (name: string) => {
@@ -53,6 +66,7 @@ export function HostedCartComingSoon() {
   };
 
   const closeFeedback = () => {
+    clearAutoOpenTimer();
     setFeedbackOpen(false);
     if (typeof window !== "undefined") {
       writeStorage(window.sessionStorage, FEEDBACK_DISMISSED_VISIT_KEY);
@@ -60,6 +74,7 @@ export function HostedCartComingSoon() {
   };
 
   const onSubmitted = () => {
+    clearAutoOpenTimer();
     setFeedbackOpen(false);
     if (typeof window !== "undefined") {
       writeStorage(window.localStorage, FEEDBACK_SUBMITTED_KEY);
