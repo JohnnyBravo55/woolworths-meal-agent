@@ -159,8 +159,32 @@ export default function DiscoveryScreen() {
                 >
                   <Text
                     style={[styles.chipText, answers.lunch_mode === mode && styles.chipTextActive]}
+                    selectable={false}
                   >
                     {mode === "practical" ? "Practical (leftovers)" : "Original recipes"}
+                  </Text>
+                </Pressable>
+              ))}
+            </View>
+          </Field>
+          <Field label="Meal complexity">
+            <View style={styles.row}>
+              {(["simple", "moderate", "ambitious"] as const).map((level) => (
+                <Pressable
+                  key={level}
+                  style={[styles.chip, answers.simplicity === level && styles.chipActive]}
+                  onPress={() => set({ simplicity: level })}
+                  accessibilityLabel={`Meal complexity ${level}`}
+                  testID={`discovery-simplicity-${level}`}
+                >
+                  <Text
+                    style={[
+                      styles.chipText,
+                      answers.simplicity === level && styles.chipTextActive,
+                    ]}
+                    selectable={false}
+                  >
+                    {level.charAt(0).toUpperCase() + level.slice(1)}
                   </Text>
                 </Pressable>
               ))}
