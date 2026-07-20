@@ -164,6 +164,7 @@ Signed NDAs append a row to a spreadsheet you own. Setup:
 4. **Deploy → New deployment → Web app** — Execute as: Me; Who has access: Anyone. Copy the URL.
 5. Set Render `NDA_SHEETS_WEBHOOK_URL` + `NDA_SHEETS_SECRET` (same secret). Redeploy the API.
 6. Open the Sheet anytime to see name + time for each acceptance.
+7. Feedback uses the **same** webhook. After pasting the updated Apps Script and redeploying a new version, the first feedback submit creates `Feedback` + `Summary` tabs (or create empty tabs manually). Open **Summary** for investor tallies (% use-again, disappointed-if-never-public, Premium at NZ$9.99).
 
 ### 2. Frontend on GitHub Pages
 
@@ -183,6 +184,7 @@ GitHub Pages requires a **public** repo on the free plan (the access code still 
 4. Complete preferences → chef → plan → recipes → shop list.
 5. Open the cart step to see **Fill shopping cart, coming soon** (Woolworths / FreshChoice / New World). Hosted builds do not connect a Woolworths login or add to trolley yet.
 6. Local developers still test real Connect → Add to trolley against `meal-agent-api` on their PC.
+7. On the cart "coming soon" page, tap **Feedback** (or wait 10 seconds) and submit the short questionnaire — answers land on the owner's Sheet `Feedback` tab.
 
 **Secrets stay on Render / GitHub Actions** — never commit `.env`.
 
