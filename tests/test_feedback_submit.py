@@ -91,3 +91,79 @@ def test_append_feedback_to_sheet_posts_webhook(monkeypatch: pytest.MonkeyPatch)
     assert calls[0]["json"]["secret"] == "test-secret"
     assert calls[0]["json"]["meal_plan_useful"] == "Useful"
     assert calls[0]["json"]["premium_subscribe"] == "Very likely"
+
+
+def test_feedback_submit_rejects_invalid_option(
+    feedback_file: Path, monkeypatch: pytest.MonkeyPatch
+):
+    monkeypatch.delenv("MEAL_AGENT_ACCESS_CODE", raising=False)
+    monkeypatch.setenv("MEAL_AGENT_ACCESS_CODE", "")
+    monkeypatch.delenv("NDA_SHEETS_WEBHOOK_URL", raising=False)
+    monkeypatch.delenv("NDA_SHEETS_SECRET", raising=False)
+    client = TestClient(app)
+    bad = {**VALID_BODY, "use_again": "Maybe"}
+    res = client.post("/api/feedback/submit", json=bad)
+    assert res.status_code == 422
+
+
+def test_feedback_submit_stores_locally_without_sheets(
+    feedback_file: Path, monkeypatch: pytest.MonkeyPatch
+):
+    monkeypatch.delenv("MEAL_AGENT_ACCESS_CODE", raising=False)
+    monkeypatch.setenv("MEAL_AGENT_ACCESS_CODE", "")
+    monkeypatch.delenv("NDA_SHEETS_WEBHOOK_URL", raising=False)
+    monkeypatch.delenv("NDA_SHEETS_SECRET", raising=False)
+    client = TestClient(app)
+    res = client.post(
+        "/api/feedback/submit",
+        json=VALID_BODY,
+        headers={"User-Agent": "pytest-agent"},
+    )
+    assert res.status_code == 200
+    body = res.json()
+    assert body["ok"] is True
+    assert body["id"]
+    assert body["submitted_at"]
+    rows = json.loads(feedback_file.read_text(encoding="utf-8"))
+    assert len(rows) == 1
+    assert rows[0]["most_valuable"] == "Shopping list"
+    assert rows[0]["user_agent"] == "pytest-agent"
+
+
+def test_feedback_submit_sheet_failure_returns_503(
+    feedback_file: Path, monkeypatch: pytest.MonkeyPatch
+):
+    monkeypatch.delenv("MEAL_AGENT_ACCESS_CODE", raising=False)
+    monkeypatch.setenv("MEAL_AGENT_ACCESS_CODE", "")
+    monkeypatch.setenv(
+        "NDA_SHEETS_WEBHOOK_URL",
+        "https://script.google.com/macros/s/fake/exec",
+    )
+    monkeypatch.setenv("NDA_SHEETS_SECRET", "test-secret")
+
+    def boom(_record) -> None:
+        raise RuntimeError("Sheets down")
+
+    monkeypatch.setattr("meal_agent_api.main.append_feedback_to_sheet", boom)
+    client = TestClient(app)
+    res = client.post("/api/feedback/submit", json=VALID_BODY)
+    assert res.status_code == 503
+    rows = json.loads(feedback_file.read_text(encoding="utf-8"))
+    assert len(rows) == 1
+
+
+def test_feedback_submit_gated_by_access_code(
+    feedback_file: Path, monkeypatch: pytest.MonkeyPatch
+):
+    monkeypatch.setenv("MEAL_AGENT_ACCESS_CODE", "usertest1")
+    monkeypatch.delenv("NDA_SHEETS_WEBHOOK_URL", raising=False)
+    monkeypatch.delenv("NDA_SHEETS_SECRET", raising=False)
+    client = TestClient(app)
+    denied = client.post("/api/feedback/submit", json=VALID_BODY)
+    assert denied.status_code == 401
+    ok = client.post(
+        "/api/feedback/submit",
+        headers={"X-Access-Code": "usertest1"},
+        json=VALID_BODY,
+    )
+    assert ok.status_code == 200

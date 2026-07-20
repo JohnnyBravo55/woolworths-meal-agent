@@ -16,6 +16,15 @@ from fastapi.staticfiles import StaticFiles
 from meal_agent_api.access_gate import AccessCodeMiddleware
 from meal_agent_api.auth import user_store
 from meal_agent_api.deps import AUTH_COOKIE, SESSION_COOKIE, get_optional_user, get_session
+from meal_agent_api.feedback import (
+    IF_NEVER_PUBLIC_OPTIONS,
+    LIKELIHOOD_OPTIONS,
+    MEAL_PLAN_USEFUL_OPTIONS,
+    MOST_VALUABLE_OPTIONS,
+    append_feedback_to_sheet,
+    feedback_store,
+    sheets_configured,
+)
 from meal_agent_api.nda import CURRENT_NDA_VERSION, append_nda_to_sheet, nda_store
 from meal_agent_api.schemas import (
     AuthLoginRequest,
@@ -23,6 +32,7 @@ from meal_agent_api.schemas import (
     CartAddRequest,
     CartResultOut,
     DiscoveryAnswers,
+    FeedbackSubmitRequest,
     ImportWoolworthsCookiesRequest,
     NdaAcceptRequest,
     WoolworthsLoginRequest,
@@ -317,6 +327,51 @@ async def nda_accept(body: NdaAcceptRequest, request: Request):
         "nda_version": record.nda_version,
         "accepted_at": record.accepted_at,
     }
+
+
+# --- Feedback (hosted beta testers) ---
+
+
+@app.post("/api/feedback/submit")
+async def feedback_submit(body: FeedbackSubmitRequest, request: Request):
+    checks = [
+        (body.meal_plan_useful, MEAL_PLAN_USEFUL_OPTIONS, "meal_plan_useful"),
+        (body.most_valuable, MOST_VALUABLE_OPTIONS, "most_valuable"),
+        (body.use_again, LIKELIHOOD_OPTIONS, "use_again"),
+        (body.if_never_public, IF_NEVER_PUBLIC_OPTIONS, "if_never_public"),
+        (body.premium_subscribe, LIKELIHOOD_OPTIONS, "premium_subscribe"),
+    ]
+    for value, allowed, field in checks:
+        if value not in allowed:
+            raise HTTPException(
+                status_code=422,
+                detail=f"Invalid {field}. Expected one of: {', '.join(allowed)}",
+            )
+
+    user_agent = request.headers.get("user-agent")
+    record = feedback_store.append(
+        session_id=body.session_id or "",
+        meal_plan_useful=body.meal_plan_useful,
+        most_valuable=body.most_valuable,
+        use_again=body.use_again,
+        if_never_public=body.if_never_public,
+        premium_subscribe=body.premium_subscribe,
+        improve=body.improve or "",
+        user_agent=user_agent,
+    )
+    if sheets_configured():
+        try:
+            append_feedback_to_sheet(record)
+        except Exception as exc:
+            raise HTTPException(
+                status_code=503,
+                detail=(
+                    "Feedback could not be saved to the owner spreadsheet. "
+                    f"Record id: {record.id}. Please try again or contact the owner."
+                ),
+            ) from exc
+
+    return {"ok": True, "id": record.id, "submitted_at": record.submitted_at}
 
 
 # --- Session ---

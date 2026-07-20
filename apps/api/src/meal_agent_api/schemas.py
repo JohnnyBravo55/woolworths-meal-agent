@@ -68,6 +68,16 @@ class NdaAcceptRequest(BaseModel):
     nda_version: str = "1"
 
 
+class FeedbackSubmitRequest(BaseModel):
+    meal_plan_useful: str
+    most_valuable: str
+    use_again: str
+    if_never_public: str
+    premium_subscribe: str
+    improve: str = ""
+    session_id: str = ""
+
+
 class CartAddRequest(BaseModel):
     allow_over_budget: bool = False
     export_only: bool = False
