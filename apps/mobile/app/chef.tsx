@@ -3,6 +3,7 @@ import { useEffect, useRef, useState } from "react";
 import { Image, Platform, Pressable, StyleSheet, Text, useWindowDimensions, View } from "react-native";
 import {
   canReuseMealPlan,
+  isMealPlanStale,
   needsSessionLossWarning,
   type ChefPersona,
   type MealPlan,
@@ -49,6 +50,14 @@ export default function ChefScreen() {
     markStepReached,
   } = useApp();
   const { showForward, goForward } = useWizardNav();
+  const planStale = isMealPlanStale({
+    mealPlan,
+    planChefId,
+    selectedChefId,
+    answers,
+    sessionBaseline,
+  });
+  const canForward = showForward && !planStale;
 
   const [openAiReady, setOpenAiReady] = useState<boolean | null>(null);
   const [openAiModel, setOpenAiModel] = useState("");
@@ -145,10 +154,13 @@ export default function ChefScreen() {
       });
       if (!completed) {
         // Plan may already be saved on the API even if the SSE "complete" event was dropped.
+        // Only adopt it when the server profile chef matches the selection — never reuse a
+        // previous chef's plan after a dropped stream.
         try {
           const recovered = await api.getPlan();
           const state = await api.getState();
-          if (recovered.meal_plan) {
+          const profileChef = (state.profile as { chef_id?: string } | null)?.chef_id;
+          if (recovered.meal_plan && profileChef === selectedChefId) {
             completed = true;
             setMealPlan(recovered.meal_plan);
             setPlanChefId(selectedChefId);
@@ -241,13 +253,16 @@ export default function ChefScreen() {
           </View>
         </CardHeader>
         <CardBody style={styles.basicBody}>
-          {basic.map((chef) => (
+            {basic.map((chef) => (
             <ChefAvatar
               key={chef.id}
               chef={chef}
               selected={selectedChefId === chef.id}
               locked={false}
               onPress={() => {
+                if (planChefId && planChefId !== chef.id) {
+                  clearWizardSession();
+                }
                 setSelectedChefId(chef.id);
                 setAnswers((a) => ({ ...a, chef_id: chef.id }));
               }}
@@ -276,6 +291,10 @@ export default function ChefScreen() {
                   locked={!premiumUnlocked}
                   onPress={() => {
                     if (!premiumUnlocked) return;
+                    if (planChefId && planChefId !== chef.id) {
+                      // Drop local plan so Forward cannot reopen the previous chef's meals.
+                      clearWizardSession();
+                    }
                     setSelectedChefId(chef.id);
                     setAnswers((a) => ({ ...a, chef_id: chef.id }));
                   }}
@@ -294,7 +313,7 @@ export default function ChefScreen() {
 
       <ActionBar style={styles.actions}>
         <Button title="← Back" variant="secondary" onPress={() => router.push("/discovery")} disabled={generating || woolworthsOpen} />
-        {showForward ? (
+        {canForward ? (
           <Button title="Forward →" variant="secondary" onPress={goForward} disabled={generating || woolworthsOpen} />
         ) : null}
         <Button

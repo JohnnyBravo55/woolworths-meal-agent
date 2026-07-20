@@ -1,6 +1,7 @@
 import { useCallback, useEffect, useState } from "react";
 import {
   canReuseMealPlan,
+  isMealPlanStale,
   needsSessionLossWarning,
   SESSION_LOSS_WARNING,
   stepIndexFromPhase,
@@ -445,7 +446,16 @@ export default function App() {
             <WizardNav
               onBack={() => setStep(0)}
               backLabel="← Back to preferences"
-              showForward={step < furthestStep}
+              showForward={
+                step < furthestStep &&
+                !isMealPlanStale({
+                  mealPlan,
+                  planChefId,
+                  selectedChefId,
+                  answers,
+                  sessionBaseline,
+                })
+              }
               onForward={goForward}
               className="mb-4"
             />
@@ -461,6 +471,9 @@ export default function App() {
               sessionBaseline,
             })}
             onSelect={(id) => {
+              if (planChefId && planChefId !== id) {
+                clearWizardSession();
+              }
               setSelectedChefId(id);
               setAnswers((prev) => ({ ...prev, chef_id: id }));
             }}

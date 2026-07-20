@@ -45,6 +45,20 @@ export function hasPreferencesChanged(
   return preferencesFingerprint(current) !== preferencesFingerprint(baseline);
 }
 
+/** True when the on-screen chef/prefs no longer match the plan currently held. */
+export function isMealPlanStale(opts: {
+  mealPlan: unknown | null;
+  planChefId: string | null;
+  selectedChefId: string;
+  answers: DiscoveryAnswers;
+  sessionBaseline: DiscoveryAnswers | null;
+}): boolean {
+  if (!opts.mealPlan) return false;
+  if (opts.planChefId && opts.planChefId !== opts.selectedChefId) return true;
+  if (hasPreferencesChanged(opts.answers, opts.sessionBaseline)) return true;
+  return false;
+}
+
 export function canReuseMealPlan(opts: {
   mealPlan: unknown | null;
   planChefId: string | null;
@@ -53,8 +67,7 @@ export function canReuseMealPlan(opts: {
   sessionBaseline: DiscoveryAnswers | null;
 }): boolean {
   if (!opts.mealPlan || !opts.planChefId) return false;
-  if (opts.planChefId !== opts.selectedChefId) return false;
-  if (hasPreferencesChanged(opts.answers, opts.sessionBaseline)) return false;
+  if (isMealPlanStale(opts)) return false;
   return true;
 }
 

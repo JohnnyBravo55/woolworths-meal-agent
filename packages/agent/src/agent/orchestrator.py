@@ -52,13 +52,29 @@ class MealAgentOrchestrator:
         self.review = ReviewGate()
         self.state = ConversationState()
 
+    def clear_plan_downstream(self) -> None:
+        """Drop meal plan + shop/cart artifacts so a new chef/prefs cannot reuse them."""
+        self.state.meal_plan = None
+        self.state.resolved_list = None
+        self.state.plan_approved = False
+        self.state.products_approved = False
+        self.state.cart_attempted = False
+        self.state.cart_success = False
+        self.state.cart_errors = []
+
     async def run_discovery(self, answers: dict) -> UserProfile:
         profile = self.conversation.create_profile_from_answers(answers)
+        # Always invalidate — setProfile is called before regen and must not leave a
+        # stale plan for SSE recovery to pick up after a chef change.
+        self.clear_plan_downstream()
         self.state.profile = profile
         self.state.advance_to(AgentPhase.PLAN_DRAFT)
         return profile
 
     async def generate_plan(self, profile: UserProfile) -> MealPlan:
+        # Clear before awaiting the LLM so a dropped SSE stream cannot recover the
+        # previous chef's plan mid-generation.
+        self.clear_plan_downstream()
         plan = await self.planner.generate(profile)
         self.state.meal_plan = plan
         self.state.advance_to(AgentPhase.PLAN_APPROVAL)
@@ -66,6 +82,7 @@ class MealAgentOrchestrator:
 
     async def generate_plan_from_templates(self, profile: UserProfile) -> MealPlan:
         """Fallback when LLM is unavailable."""
+        self.clear_plan_downstream()
         plan = self.planner._generate_from_templates(profile)
         self.state.meal_plan = plan
         self.state.advance_to(AgentPhase.PLAN_APPROVAL)
