@@ -21,3 +21,5 @@ apps/mobile/.expo/
 .superpowers/
 
 apps/browser-extension/.load-firefox/
+
+.worktrees/
