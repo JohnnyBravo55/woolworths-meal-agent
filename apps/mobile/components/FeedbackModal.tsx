@@ -85,6 +85,14 @@ export function FeedbackModal({ visible, onClose, onSubmitted }: Props) {
 
   useEffect(() => {
     if (!visible) return;
+    let wasSubmitted = false;
+    try {
+      if (typeof localStorage !== "undefined") {
+        wasSubmitted = localStorage.getItem(FEEDBACK_SUBMITTED_KEY) === "1";
+      }
+    } catch {
+      // Storage can be unavailable; keep the questionnaire usable.
+    }
     setMealPlanUseful(undefined);
     setMostValuable(undefined);
     setUseAgain(undefined);
@@ -93,7 +101,7 @@ export function FeedbackModal({ visible, onClose, onSubmitted }: Props) {
     setImprove("");
     setLoading(false);
     setError(undefined);
-    setSubmitted(false);
+    setSubmitted(wasSubmitted);
   }, [visible]);
 
   const canSubmit =
@@ -119,11 +127,14 @@ export function FeedbackModal({ visible, onClose, onSubmitted }: Props) {
         improve: improve.trim(),
         session_id: sessionId ?? undefined,
       });
-      if (typeof localStorage !== "undefined") {
-        localStorage.setItem(FEEDBACK_SUBMITTED_KEY, "1");
-      }
       setSubmitted(true);
-      onSubmitted();
+      try {
+        if (typeof localStorage !== "undefined") {
+          localStorage.setItem(FEEDBACK_SUBMITTED_KEY, "1");
+        }
+      } catch {
+        // Submission succeeded, so storage failure must not invite a retry.
+      }
     } catch (submitError) {
       setError(
         submitError instanceof Error
@@ -156,7 +167,7 @@ export function FeedbackModal({ visible, onClose, onSubmitted }: Props) {
               <View style={styles.thanks}>
                 <Text style={styles.title}>Thank you!</Text>
                 <Text style={styles.subtitle}>Your feedback will help us improve Meal Agent.</Text>
-                <Button title="Done" onPress={onClose} />
+                <Button title="Done" onPress={onSubmitted} />
               </View>
             ) : (
               <>
