@@ -219,30 +219,108 @@ def _is_practical_lunch(meal: Meal, profile: UserProfile) -> bool:
     return is_leftover_meal(meal)
 
 
+_WEEKDAYS = (
+    "monday",
+    "tuesday",
+    "wednesday",
+    "thursday",
+    "friday",
+    "saturday",
+    "sunday",
+)
+
+# Pack/count retail units — already household-sized; never auto-double for leftovers
+_PACK_COUNT_UNITS = frozenset(
+    {
+        "pack",
+        "packs",
+        "block",
+        "blocks",
+        "bag",
+        "bags",
+        "loaf",
+        "loaves",
+        "punnet",
+        "punnets",
+        "jar",
+        "jars",
+        "bottle",
+        "bottles",
+        "tub",
+        "tubs",
+    }
+)
+
+# Modest bump: dinner already sized for household; ~half again for next-day lunch
+_LEFTOVER_PORTION_BUMP = 1.5
+
+
+def _weekday_index(day_label: str) -> int | None:
+    key = (day_label or "").strip().lower()
+    try:
+        return _WEEKDAYS.index(key)
+    except ValueError:
+        return None
+
+
+def _dinners_feeding_next_day_leftover_lunch(meals: list[Meal]) -> set[int]:
+    """Return weekday indexes of dinners that feed a next-day leftover lunch."""
+    leftover_lunch_days: set[int] = set()
+    for meal in meals:
+        if meal.slot != MealSlot.LUNCH:
+            continue
+        if not is_leftover_meal(meal):
+            continue
+        idx = _weekday_index(meal.day_label)
+        if idx is not None:
+            leftover_lunch_days.add(idx)
+    # Lunch on day D reuses dinner from day D-1
+    return {(d - 1) % 7 for d in leftover_lunch_days}
+
+
 def scale_dinner_portions_for_leftovers(meals: list[Meal], profile: UserProfile) -> list[Meal]:
-    """Cook enough at dinner for same-day dinner plus next-day leftover lunch."""
+    """Bump weight protein/carb on dinners that feed a next-day leftover lunch.
+
+    Portions from the planner are already for household size. We only add a modest
+    ~1.5× bump for leftovers — never multiply by household_size, and never double
+    pack/block retail units (taco packs, cheese blocks, wraps).
+    """
     if profile.lunch_mode != LunchMode.PRACTICAL:
         return meals
-    # e.g. 2 people → dinner + lunch portions ≈ 2× protein/carbs at dinner
-    scale = max(1.5, float(profile.household_size))
+
+    feed_days = _dinners_feeding_next_day_leftover_lunch(meals)
+    if not feed_days:
+        return meals
+
     weight_units = {"g", "gram", "grams", "kg", "kilogram", "kilograms", "kilo"}
+    piece_units = {"each", "fillet", "fillets", "piece", "pieces", "can", "cans"}
 
     for meal in meals:
         if meal.slot != MealSlot.DINNER:
             continue
+        day_idx = _weekday_index(meal.day_label)
+        if day_idx is None or day_idx not in feed_days:
+            continue
         for ing in meal.ingredients:
             name = ing.name.lower()
             unit = ing.unit.lower().strip()
+            if unit in _PACK_COUNT_UNITS:
+                continue
             is_protein = any(p in name for p in _PROTEIN)
             is_carb = any(c in name for c in _CARB)
             if not is_protein and not is_carb:
                 continue
-            if unit in weight_units or unit == "kg" or (unit in ("each", "") and ing.quantity >= 50):
-                ing.quantity = round(ing.quantity * scale, 0)
-            elif unit in ("each", "fillet", "fillets", "piece", "pieces", "can", "cans"):
-                ing.quantity = max(ing.quantity, scale * 2)
+            # Cheese blocks/toppings are not leftover-scaled staples
+            if "cheese" in name:
+                continue
+            if unit in weight_units or (unit in ("",) and ing.quantity >= 50):
+                ing.quantity = round(ing.quantity * _LEFTOVER_PORTION_BUMP, 0)
+            elif unit in piece_units:
+                bumped = round(ing.quantity * _LEFTOVER_PORTION_BUMP)
+                ing.quantity = max(ing.quantity, bumped)
             elif is_protein or is_carb:
-                ing.quantity = round(ing.quantity * scale, 1)
+                # Unknown unit (e.g. tbsp) — leave alone rather than over-buy
+                continue
     return meals
 
 
@@ -268,10 +346,16 @@ def _defaults_for_missing(
 
     if is_practical_lunch:
         if not _has_any(text, _CARB):
-            pick = _pick_default(
-                [("bread", 1, "loaf"), ("tortilla wraps", 1, "pack"), ("crispbread", 1, "pack")],
-                profile,
+            saucy = any(
+                w in text
+                for w in ("curry", "stew", "soup", "braise", "casserole", "tagine", "sauce")
             )
+            carb_options = (
+                [("rice", 1, "bag"), ("jasmine rice", 1, "bag")]
+                if saucy
+                else [("bread", 1, "loaf"), ("tortilla wraps", 1, "pack"), ("crispbread", 1, "pack")]
+            )
+            pick = _pick_default(carb_options, profile)
             if pick:
                 adds.append(Ingredient(name=pick[0], quantity=pick[1], unit=pick[2]))
         return adds

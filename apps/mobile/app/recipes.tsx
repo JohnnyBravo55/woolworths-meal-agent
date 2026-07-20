@@ -22,6 +22,20 @@ const SLOT_LABEL: Record<string, string> = {
   snack: "Snack",
   dinner: "Dinner",
 };
+const DAY_ORDER = [
+  "Monday",
+  "Tuesday",
+  "Wednesday",
+  "Thursday",
+  "Friday",
+  "Saturday",
+  "Sunday",
+];
+
+function dayRank(day: string): number {
+  const idx = DAY_ORDER.findIndex((d) => d.toLowerCase() === day.toLowerCase());
+  return idx === -1 ? 99 : idx;
+}
 
 function groupByDay(meals: Meal[]) {
   const byDay = new Map<string, Meal[]>();
@@ -30,10 +44,12 @@ function groupByDay(meals: Meal[]) {
     if (!byDay.has(day)) byDay.set(day, []);
     byDay.get(day)!.push(meal);
   }
-  return Array.from(byDay.entries()).map(([day, dayMeals]) => ({
-    day,
-    meals: [...dayMeals].sort((a, b) => (SLOT_ORDER[a.slot] ?? 9) - (SLOT_ORDER[b.slot] ?? 9)),
-  }));
+  return Array.from(byDay.entries())
+    .sort((a, b) => dayRank(a[0]) - dayRank(b[0]))
+    .map(([day, dayMeals]) => ({
+      day,
+      meals: [...dayMeals].sort((a, b) => (SLOT_ORDER[a.slot] ?? 9) - (SLOT_ORDER[b.slot] ?? 9)),
+    }));
 }
 
 export default function RecipesScreen() {

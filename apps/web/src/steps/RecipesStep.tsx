@@ -28,6 +28,21 @@ const SLOT_LABEL: Record<string, string> = {
   dinner: "Dinner",
 };
 
+const DAY_ORDER = [
+  "Monday",
+  "Tuesday",
+  "Wednesday",
+  "Thursday",
+  "Friday",
+  "Saturday",
+  "Sunday",
+];
+
+function dayRank(day: string): number {
+  const idx = DAY_ORDER.findIndex((d) => d.toLowerCase() === day.toLowerCase());
+  return idx === -1 ? 99 : idx;
+}
+
 function groupMealsByDay(meals: Meal[]): { day: string; meals: Meal[] }[] {
   const byDay = new Map<string, Meal[]>();
   for (const meal of meals) {
@@ -35,12 +50,14 @@ function groupMealsByDay(meals: Meal[]): { day: string; meals: Meal[] }[] {
     if (!byDay.has(day)) byDay.set(day, []);
     byDay.get(day)!.push(meal);
   }
-  return Array.from(byDay.entries()).map(([day, dayMeals]) => ({
-    day,
-    meals: [...dayMeals].sort(
-      (a, b) => (SLOT_ORDER[a.slot] ?? 9) - (SLOT_ORDER[b.slot] ?? 9),
-    ),
-  }));
+  return Array.from(byDay.entries())
+    .sort((a, b) => dayRank(a[0]) - dayRank(b[0]))
+    .map(([day, dayMeals]) => ({
+      day,
+      meals: [...dayMeals].sort(
+        (a, b) => (SLOT_ORDER[a.slot] ?? 9) - (SLOT_ORDER[b.slot] ?? 9),
+      ),
+    }));
 }
 
 function resolveStatusLabel(progress: Props["progress"]): string {

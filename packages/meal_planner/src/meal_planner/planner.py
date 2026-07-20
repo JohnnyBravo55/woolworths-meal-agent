@@ -157,36 +157,49 @@ _TEMPLATE_LUNCHES_ORIGINAL = [
 
 _TEMPLATE_LUNCHES_PRACTICAL = [
     {
-        "name": "Leftover Dinner Wraps",
-        "description": "Use extra protein and veg from last night's dinner in wraps.",
+        "name": "Simple Day-One Lunch Bowl",
+        "description": "First-day lunch — no leftovers yet. Quick protein, carb, and veg.",
+        "ingredients": [
+            ("eggs", 4, "each"),
+            ("bread", 1, "loaf"),
+            ("mixed salad leaves", 1, "bag"),
+            ("cherry tomatoes", 1, "punnet"),
+        ],
+        "steps": [
+            "Cook eggs and toast bread.",
+            "Serve with salad leaves and tomatoes — first day has no prior dinner leftovers.",
+        ],
+    },
+    {
+        "name": "Leftover Firm Protein Wraps",
+        "description": "Yesterday's roast or grill meat in wraps with salad — only for firm leftovers.",
         "ingredients": [
             ("tortilla wraps", 1, "pack"),
             ("mixed salad leaves", 1, "bag"),
         ],
         "steps": [
-            "Reheat leftover dinner protein and vegetables from yesterday.",
-            "Wrap with salad leaves in tortillas — no new protein needed.",
+            "Reheat leftover firm dinner protein from yesterday (roast, grill, patties).",
+            "Wrap with salad leaves — never use curry, stew, or saucy leftovers in wraps.",
         ],
     },
     {
-        "name": "Leftover Sandwich Plates",
-        "description": "Turn leftover roast or stir-fry into sandwiches.",
+        "name": "Leftover Curry or Stew with Rice",
+        "description": "Reheat yesterday's curry or stew with rice — not wraps or sandwiches.",
         "ingredients": [
-            ("bread", 1, "loaf"),
-            ("butter", 1, "block"),
+            ("rice", 1, "bag"),
         ],
         "steps": [
-            "Slice leftover dinner protein and serve on buttered bread.",
-            "Add any leftover salad or veg from the fridge.",
+            "Reheat leftover curry, stew, or saucy dinner from yesterday.",
+            "Serve with leftover rice or freshly cooked rice — never in wraps or sandwiches.",
         ],
     },
     {
         "name": "Extra Dinner Portions",
-        "description": "Pack an extra portion when cooking dinner — eat as lunch.",
+        "description": "Reheat an extra portion saved from last night's dinner.",
         "ingredients": [],
         "steps": [
-            "When cooking tonight's dinner, cook one extra portion.",
-            "Reheat tomorrow for lunch — same meal, no extra shopping.",
+            "When cooking yesterday's dinner, cook about half again extra protein and carb.",
+            "Reheat today for lunch — same meal, no extra shopping.",
         ],
     },
 ]
@@ -434,10 +447,18 @@ class MealPlanner:
         lunch_mode_note = ""
         if profile.lunch_mode == LunchMode.PRACTICAL:
             lunch_mode_note = (
-                "LUNCH MODE: PRACTICAL — lunches use LEFTOVERS from dinners. "
-                "Cook EXTRA portions at dinner (protein and carbs) so lunches can reuse "
-                "leftovers for the whole household. Scale protein to cover dinner plus next-day lunch."
-                "Do NOT plan completely separate lunch recipes."
+                "LUNCH MODE: PRACTICAL — reuse PRIOR-DAY dinner leftovers only. "
+                "Never use the same day's dinner for lunch (lunch is eaten before dinner). "
+                "Day 1 lunch MUST be a simple ORIGINAL lunch with its own protein, carb, and veg. "
+                "From day 2, each lunch reuses the previous day's dinner "
+                "(Monday dinner → Tuesday lunch, Tuesday dinner → Wednesday lunch, etc.). "
+                "Cook about half again extra protein/carb at dinners that feed tomorrow's lunch — "
+                "amounts are already for household size; do NOT multiply packs/blocks "
+                "(taco packs, cheese blocks, wrap packs). "
+                "Leftover FORMAT FIT: wraps/sandwiches only for firm leftovers "
+                "(roast, grill, patties). Curries, stews, soups, and saucy dishes → rice only "
+                "(leftover rice or cook more rice at lunch) — NEVER curry wraps or sandwiches. "
+                "Do NOT invent unrelated lunch recipes except the day-1 original lunch."
             )
         else:
             lunch_mode_note = (

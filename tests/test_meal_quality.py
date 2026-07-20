@@ -165,13 +165,61 @@ def test_leftover_lunch_shops_sides_not_protein():
 def test_dinner_scaled_for_leftovers():
     from meal_planner.meal_quality import scale_dinner_portions_for_leftovers
 
-    meal = Meal(
+    dinner = Meal(
         name="Chicken stir fry",
         slot=MealSlot.DINNER,
         day_label="Monday",
         description="",
-        ingredients=[Ingredient(name="chicken breast", quantity=400, unit="g")],
+        ingredients=[
+            Ingredient(name="chicken breast", quantity=400, unit="g"),
+            Ingredient(name="soft taco tortillas", quantity=1, unit="pack"),
+            Ingredient(name="cheese", quantity=1, unit="block"),
+        ],
         steps=[],
     )
-    out = scale_dinner_portions_for_leftovers([meal], _profile(lunch_mode=LunchMode.PRACTICAL))
-    assert out[0].ingredients[0].quantity >= 600
+    lunch = Meal(
+        name="Leftover chicken wraps",
+        slot=MealSlot.LUNCH,
+        day_label="Tuesday",
+        description="Use leftover chicken from yesterday",
+        ingredients=[Ingredient(name="tortilla wraps", quantity=1, unit="pack")],
+        steps=["Reheat leftover chicken and wrap."],
+    )
+    out = scale_dinner_portions_for_leftovers(
+        [dinner, lunch], _profile(lunch_mode=LunchMode.PRACTICAL, household_size=2)
+    )
+    by_name = {i.name: i for i in out[0].ingredients}
+    assert by_name["chicken breast"].quantity == 600  # 400 × 1.5, not × household
+    assert by_name["soft taco tortillas"].quantity == 1  # packs not doubled
+    assert by_name["cheese"].quantity == 1  # cheese blocks not doubled
+
+
+def test_dinner_not_scaled_without_next_day_leftover_lunch():
+    from meal_planner.meal_quality import scale_dinner_portions_for_leftovers
+
+    dinner = Meal(
+        name="Beef tacos",
+        slot=MealSlot.DINNER,
+        day_label="Monday",
+        description="",
+        ingredients=[
+            Ingredient(name="beef mince", quantity=500, unit="g"),
+            Ingredient(name="soft taco tortillas", quantity=2, unit="pack"),
+        ],
+        steps=[],
+    )
+    # Day-1 original lunch — no leftover reuse
+    lunch = Meal(
+        name="Egg salad sandwich",
+        slot=MealSlot.LUNCH,
+        day_label="Monday",
+        description="Simple first-day lunch",
+        ingredients=[Ingredient(name="eggs", quantity=4, unit="each")],
+        steps=["Make sandwiches."],
+    )
+    out = scale_dinner_portions_for_leftovers(
+        [dinner, lunch], _profile(lunch_mode=LunchMode.PRACTICAL, household_size=4)
+    )
+    by_name = {i.name: i for i in out[0].ingredients}
+    assert by_name["beef mince"].quantity == 500
+    assert by_name["soft taco tortillas"].quantity == 2
