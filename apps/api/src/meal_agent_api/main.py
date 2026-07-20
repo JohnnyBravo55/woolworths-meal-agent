@@ -370,7 +370,7 @@ async def feedback_submit(body: FeedbackSubmitRequest, request: Request):
                     f"Record id: {record.id}. Underlying error: {exc}. "
                     "If this mentions full_name or Unauthorized, redeploy the "
                     "Apps Script from docs/nda-google-sheets-apps-script.js "
-                    "(Deploy → Manage deployments → New version)."
+                    "(Deploy > Manage deployments > New version)."
                 ),
             ) from exc
 
