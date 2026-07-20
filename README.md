@@ -163,7 +163,7 @@ Signed NDAs append a row to a spreadsheet you own. Setup:
 3. **Project Settings → Script properties** — add `NDA_SECRET` = your secret.
 4. **Deploy → New deployment → Web app** — Execute as: Me; Who has access: Anyone. Copy the URL.
 5. Set Render `NDA_SHEETS_WEBHOOK_URL` + `NDA_SHEETS_SECRET` (same secret). Redeploy the API.
-6. After pasting an updated script: Deploy → Manage deployments → **New version**. Then in Apps Script run **`resetSheetLayout_`** once to fix headers + rebuild Summary (keeps existing data).
+6. After pasting an updated script: Deploy → Manage deployments → **New version**. Then in Apps Script run **`resetSheetLayout`** once to fix headers + rebuild Summary (keeps existing data).
 7. **Summary** = investor tallies; **Feedback** = one survey row each; **Acceptances** = who signed the NDA.
 
 ### 2. Frontend on GitHub Pages

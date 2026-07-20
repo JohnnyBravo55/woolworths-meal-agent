@@ -15,8 +15,8 @@
  * - Summary — auto counts / % for investors (read this first)
  *
  * One-time cleanup after pasting this script:
- * Run function resetSheetLayout_ from the Apps Script editor
- * (select resetSheetLayout_ → Run). That rebuilds headers + Summary
+ * Run function resetSheetLayout from the Apps Script editor
+ * (select resetSheetLayout → Run). That rebuilds headers + Summary
  * without deleting existing Feedback / Acceptances data rows.
  */
 
@@ -64,7 +64,7 @@ function doPost(e) {
     return handleFeedback_(body);
   }
   if (type === "reset_layout") {
-    resetSheetLayout_();
+    resetSheetLayout();
     return jsonOut_({ ok: true, reset: true });
   }
   return handleNda_(body);
@@ -128,7 +128,7 @@ function handleFeedback_(body) {
 }
 
 /** Manual / one-time: rebuild headers + Summary without wiping data. */
-function resetSheetLayout_() {
+function resetSheetLayout() {
   var ss = SpreadsheetApp.getActiveSpreadsheet();
   var acceptances = ensureNamedSheet_(ss, "Acceptances");
   var feedback = ensureNamedSheet_(ss, "Feedback");
