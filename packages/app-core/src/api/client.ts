@@ -330,6 +330,32 @@ export function createApiClient(config: ApiClientConfig) {
         }),
       }),
 
+    submitFeedback: (opts: {
+      meal_plan_useful: string;
+      most_valuable: string;
+      use_again: string;
+      if_never_public: string;
+      premium_subscribe: string;
+      improve?: string;
+      session_id?: string;
+    }) =>
+      jsonFetch<{
+        ok: boolean;
+        id: string;
+        submitted_at: string;
+      }>("/api/feedback/submit", {
+        method: "POST",
+        body: JSON.stringify({
+          meal_plan_useful: opts.meal_plan_useful,
+          most_valuable: opts.most_valuable,
+          use_again: opts.use_again,
+          if_never_public: opts.if_never_public,
+          premium_subscribe: opts.premium_subscribe,
+          improve: opts.improve ?? "",
+          session_id: opts.session_id ?? "",
+        }),
+      }),
+
     exportCsvUrl: () => `${base()}/api/export/csv`,
     exportMarkdownUrl: () => `${base()}/api/export/markdown`,
 
