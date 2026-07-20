@@ -1,7 +1,6 @@
 import { useEffect, useRef, useState } from "react";
-import { Pressable, StyleSheet, Text, View } from "react-native";
+import { Platform, Pressable, StyleSheet, Text, View } from "react-native";
 import { FeedbackModal } from "@/components/FeedbackModal";
-import { Button } from "@/components/ui/Button";
 import {
   FEEDBACK_AUTO_OPEN_MS,
   FEEDBACK_DISMISSED_VISIT_KEY,
@@ -14,6 +13,8 @@ const RETAILERS = [
   { id: "freshchoice", name: "FreshChoice", color: "#F36C00" },
   { id: "new-world", name: "New World", color: "#C8102E" },
 ] as const;
+
+const FEEDBACK_BLUE = "#2563eb";
 
 function readStorage(storage: Storage | undefined, key: string): boolean {
   try {
@@ -101,15 +102,29 @@ export function HostedCartComingSoon() {
             ]}
           >
             <View style={styles.logoMark}>
-              <Text style={styles.logoInitial}>{r.name.charAt(0)}</Text>
+              <Text style={styles.logoInitial} selectable={false}>
+                {r.name.charAt(0)}
+              </Text>
             </View>
-            <Text style={styles.retailerName}>{r.name}</Text>
-            <Text style={styles.coming}>Coming soon</Text>
+            <Text style={styles.retailerName} selectable={false}>
+              {r.name}
+            </Text>
+            <Text style={styles.coming} selectable={false}>
+              Coming soon
+            </Text>
           </Pressable>
         ))}
       </View>
 
-      <Button title="Feedback" onPress={() => setFeedbackOpen(true)} />
+      <Pressable
+        accessibilityLabel="Give feedback"
+        onPress={() => setFeedbackOpen(true)}
+        style={({ pressed }) => [styles.feedbackBtn, { opacity: pressed ? 0.88 : 1 }]}
+      >
+        <Text style={styles.feedbackBtnText} selectable={false}>
+          Give feedback
+        </Text>
+      </Pressable>
 
       {toast ? <Text style={styles.toast}>{toast}</Text> : null}
 
@@ -152,6 +167,7 @@ const styles = StyleSheet.create({
     paddingVertical: 14,
     paddingHorizontal: 16,
     minHeight: 56,
+    ...(Platform.OS === "web" ? ({ userSelect: "none" } as object) : {}),
   },
   logoMark: {
     width: 36,
@@ -176,6 +192,30 @@ const styles = StyleSheet.create({
     color: "rgba(255,255,255,0.85)",
     fontSize: 12,
     fontWeight: "600",
+  },
+  feedbackBtn: {
+    marginTop: 18,
+    alignSelf: "center",
+    backgroundColor: FEEDBACK_BLUE,
+    borderRadius: 14,
+    paddingVertical: 18,
+    paddingHorizontal: 28,
+    minHeight: 64,
+    minWidth: 280,
+    alignItems: "center",
+    justifyContent: "center",
+    shadowColor: FEEDBACK_BLUE,
+    shadowOpacity: 0.35,
+    shadowRadius: 10,
+    shadowOffset: { width: 0, height: 4 },
+    elevation: 5,
+    ...(Platform.OS === "web" ? ({ userSelect: "none" } as object) : {}),
+  },
+  feedbackBtnText: {
+    color: "#fff",
+    fontSize: 19,
+    fontWeight: "800",
+    letterSpacing: 0.2,
   },
   toast: {
     marginTop: 4,

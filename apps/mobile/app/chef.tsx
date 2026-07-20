@@ -1,6 +1,6 @@
 import { useRouter } from "expo-router";
 import { useEffect, useRef, useState } from "react";
-import { Image, Pressable, StyleSheet, Text, useWindowDimensions, View } from "react-native";
+import { Image, Platform, Pressable, StyleSheet, Text, useWindowDimensions, View } from "react-native";
 import {
   canReuseMealPlan,
   needsSessionLossWarning,
@@ -335,41 +335,50 @@ function ChefAvatar({
       onPress={onPress}
       disabled={locked}
     >
-      <View
-        style={[
-          styles.avatarRing,
-          isPremium && styles.avatarRingPremium,
-          selected && styles.avatarRingSelected,
-        ]}
-      >
-        {source ? (
-          <Image source={source} style={styles.avatar} />
-        ) : (
-          <View
-            style={[
-              styles.avatar,
-              styles.avatarFallback,
-              { backgroundColor: chef.avatar_from || theme.green },
-            ]}
-          >
-            <Text style={styles.initials}>{chef.avatar_initials}</Text>
-          </View>
-        )}
-        {locked ? (
-          <View style={styles.lockOverlay}>
-            <Text style={styles.lockIcon}>🔒</Text>
-          </View>
-        ) : null}
+      <View style={[styles.avatarOuter, selected && styles.avatarOuterSelected]}>
+        <View style={[styles.avatarRing, isPremium && styles.avatarRingPremium]}>
+          {source ? (
+            <Image source={source} style={styles.avatar} />
+          ) : (
+            <View
+              style={[
+                styles.avatar,
+                styles.avatarFallback,
+                { backgroundColor: chef.avatar_from || theme.green },
+              ]}
+            >
+              <Text style={styles.initials} selectable={false}>
+                {chef.avatar_initials}
+              </Text>
+            </View>
+          )}
+          {locked ? (
+            <View style={styles.lockOverlay}>
+              <Text style={styles.lockIcon} selectable={false}>
+                🔒
+              </Text>
+            </View>
+          ) : null}
+        </View>
       </View>
-      <Text style={styles.chefName}>{chef.name}</Text>
-      <Text style={styles.chefTitle}>{chef.title}</Text>
-      <Text style={styles.chefTagline}>{chef.tagline}</Text>
-      <Text style={styles.chefRegion}>{chef.region}</Text>
+      <Text style={styles.chefName} selectable={false}>
+        {chef.name}
+      </Text>
+      <Text style={styles.chefTitle} selectable={false}>
+        {chef.title}
+      </Text>
+      <Text style={styles.chefTagline} selectable={false}>
+        {chef.tagline}
+      </Text>
+      <Text style={styles.chefRegion} selectable={false}>
+        {chef.region}
+      </Text>
     </Pressable>
   );
 }
 
 const AVATAR_SIZE = 112;
+const OUTER_PAD = 5;
 
 const styles = StyleSheet.create({
   aiBannerOk: {
@@ -437,8 +446,24 @@ const styles = StyleSheet.create({
   avatarPressable: {
     alignItems: "center",
     maxWidth: 176,
+    ...(Platform.OS === "web" ? ({ userSelect: "none" } as object) : {}),
   },
   chefLocked: { opacity: 0.6 },
+  avatarOuter: {
+    borderRadius: (AVATAR_SIZE + 16 + OUTER_PAD * 2) / 2,
+    padding: OUTER_PAD,
+    borderWidth: 3,
+    borderColor: "transparent",
+  },
+  avatarOuterSelected: {
+    borderColor: theme.green,
+    backgroundColor: "rgba(23, 136, 65, 0.18)",
+    shadowColor: theme.green,
+    shadowOpacity: 0.55,
+    shadowRadius: 10,
+    shadowOffset: { width: 0, height: 0 },
+    elevation: 6,
+  },
   avatarRing: {
     borderRadius: (AVATAR_SIZE + 8) / 2,
     padding: 4,
@@ -450,11 +475,6 @@ const styles = StyleSheet.create({
     shadowRadius: 6,
     shadowOffset: { width: 0, height: 2 },
     elevation: 3,
-  },
-  avatarRingSelected: {
-    borderWidth: 4,
-    borderColor: theme.green,
-    padding: 2,
   },
   avatar: {
     width: AVATAR_SIZE,

@@ -43,7 +43,9 @@ export function Button({
       {loading ? (
         <ActivityIndicator color={color} />
       ) : (
-        <Text style={[styles.text, { color }]}>{title}</Text>
+        <Text style={[styles.text, { color }]} selectable={false}>
+          {title}
+        </Text>
       )}
     </Pressable>
   );
@@ -57,7 +59,12 @@ const styles = StyleSheet.create({
     borderWidth: 1,
     alignItems: "center",
     minWidth: 80,
+    ...(Platform.OS === "web" ? ({ userSelect: "none" } as object) : {}),
   },
   btnWeb: { minWidth: 220 },
-  text: { fontSize: 15, fontWeight: "600" },
+  text: {
+    fontSize: 15,
+    fontWeight: "600",
+    ...(Platform.OS === "web" ? ({ userSelect: "none" } as object) : {}),
+  },
 });

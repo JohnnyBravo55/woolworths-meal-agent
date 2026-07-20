@@ -73,7 +73,7 @@ export function AppProvider({ children }: { children: React.ReactNode }) {
   const [shopList, setShopList] = useState<ResolvedGroceryList | null>(null);
   const [cartResult, setCartResult] = useState<CartResult | null>(null);
   const [chefs, setChefs] = useState<ChefPersona[]>([]);
-  const [premiumUnlocked, setPremiumUnlocked] = useState(false);
+  const [premiumUnlocked, setPremiumUnlocked] = useState(true);
   const [selectedChefId, setSelectedChefId] = useState("basic_sam");
   const [planChefId, setPlanChefId] = useState<string | null>(null);
   const [profiles, setProfiles] = useState<{ id: string; name: string }[]>([]);

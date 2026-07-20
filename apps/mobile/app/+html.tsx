@@ -32,6 +32,15 @@ const responsiveBackground = `
 body {
   background-color: #f8fafc;
 }
+/* Prevent click-drag from highlighting button labels on web */
+button,
+[role="button"],
+button *,
+[role="button"] * {
+  -webkit-user-select: none;
+  user-select: none;
+  -webkit-touch-callout: none;
+}
 @media (prefers-color-scheme: dark) {
   body {
     background-color: #0f172a;

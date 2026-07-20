@@ -1,6 +1,6 @@
 export const FEEDBACK_SUBMITTED_KEY = "meal-agent-feedback-submitted";
 export const FEEDBACK_DISMISSED_VISIT_KEY = "meal-agent-feedback-dismissed-visit";
-export const FEEDBACK_AUTO_OPEN_MS = 10_000;
+export const FEEDBACK_AUTO_OPEN_MS = 6_000;
 
 export const MEAL_PLAN_USEFUL_OPTIONS = [
   "Very useful",
