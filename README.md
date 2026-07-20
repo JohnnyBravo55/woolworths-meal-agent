@@ -158,13 +158,13 @@ Share a public webpage + access code **`usertest1`**. The free Render API may sl
 
 Signed NDAs append a row to a spreadsheet you own. Setup:
 
-1. Create a Google Sheet (optional tab name: `Acceptances`; header row: `accepted_at`, `full_name`, `nda_version`, `id`, `client_ip`, `user_agent`).
+1. Create a Google Sheet with three tabs in mind: **Summary** (read first), **Feedback**, **Acceptances**.
 2. **Extensions → Apps Script** — paste [`docs/nda-google-sheets-apps-script.js`](docs/nda-google-sheets-apps-script.js), save.
 3. **Project Settings → Script properties** — add `NDA_SECRET` = your secret.
 4. **Deploy → New deployment → Web app** — Execute as: Me; Who has access: Anyone. Copy the URL.
 5. Set Render `NDA_SHEETS_WEBHOOK_URL` + `NDA_SHEETS_SECRET` (same secret). Redeploy the API.
-6. Open the Sheet anytime to see name + time for each acceptance.
-7. Feedback uses the **same** webhook. After pasting the updated Apps Script and redeploying a new version, the first feedback submit creates `Feedback` + `Summary` tabs (or create empty tabs manually). Open **Summary** for investor tallies (% use-again, disappointed-if-never-public, Premium at NZ$9.99).
+6. After pasting an updated script: Deploy → Manage deployments → **New version**. Then in Apps Script run **`resetSheetLayout_`** once to fix headers + rebuild Summary (keeps existing data).
+7. **Summary** = investor tallies; **Feedback** = one survey row each; **Acceptances** = who signed the NDA.
 
 ### 2. Frontend on GitHub Pages
 
