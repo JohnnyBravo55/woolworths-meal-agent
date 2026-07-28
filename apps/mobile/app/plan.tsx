@@ -32,6 +32,7 @@ export default function PlanScreen() {
   const { showForward, goForward } = useWizardNav();
   const [selected, setSelected] = useState<Meal | null>(null);
   const [checked, setChecked] = useState<Set<number>>(() => new Set());
+  const [approving, setApproving] = useState(false);
 
   const { grid, indexByKey, mealCount } = useMemo(() => {
     if (!mealPlan) {
@@ -101,7 +102,8 @@ export default function PlanScreen() {
   };
 
   const approve = async () => {
-    setLoading(true);
+    // Local loading avoids re-rendering the full week grid via global AppProvider loading.
+    setApproving(true);
     try {
       const res = await api.approvePlan();
       setMeals((res.meals ?? res.dinners) as Meal[]);
@@ -109,7 +111,7 @@ export default function PlanScreen() {
       markStepReached(3);
       router.push("/recipes");
     } finally {
-      setLoading(false);
+      setApproving(false);
     }
   };
 
@@ -145,7 +147,13 @@ export default function PlanScreen() {
     <>
       <Button title="← Back" variant="secondary" onPress={() => router.push("/chef")} />
       {showForward ? <Button title="Forward →" variant="secondary" onPress={goForward} /> : null}
-      <Button title="Approve plan →" onPress={approve} loading={loading} testID="plan-approve" />
+      <Button
+        title="Approve plan →"
+        onPress={approve}
+        loading={approving}
+        disabled={loading || approving}
+        testID="plan-approve"
+      />
     </>
   );
 

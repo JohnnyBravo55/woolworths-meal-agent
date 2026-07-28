@@ -1,6 +1,6 @@
 import { useRouter } from "expo-router";
-import { useCallback, useRef, useState } from "react";
-import { Platform, StyleSheet, Text, View } from "react-native";
+import { useCallback, useMemo, useRef, useState } from "react";
+import { FlatList, Platform, Pressable, StyleSheet, Text, View } from "react-native";
 import type { Meal, ResolvedGroceryList } from "@meal-agent/app-core";
 import { WizardShell } from "@/components/WizardShell";
 import { useApp } from "@/context/AppProvider";
@@ -70,10 +70,34 @@ export default function RecipesScreen() {
   const { showForward, goForward } = useWizardNav();
 
   const [awaitingWoolworths, setAwaitingWoolworths] = useState(false);
+  const [expandedMeals, setExpandedMeals] = useState<Set<string>>(() => new Set());
   const pendingResolve = useRef<{ force: boolean } | null>(null);
   const isWeb = Platform.OS === "web";
 
-  const byDay = groupByDay(meals);
+  const byDay = useMemo(() => groupByDay(meals), [meals]);
+  const mealRows = useMemo(
+    () =>
+      byDay.flatMap(({ day, meals: dayMeals }) => [
+        { kind: "day" as const, key: `day-${day}`, day },
+        ...dayMeals.map((meal, idx) => ({
+          kind: "meal" as const,
+          key: `${day}-${idx}-${meal.name}`,
+          day,
+          meal,
+          idx,
+        })),
+      ]),
+    [byDay],
+  );
+
+  const toggleIngredients = (key: string) => {
+    setExpandedMeals((prev) => {
+      const next = new Set(prev);
+      if (next.has(key)) next.delete(key);
+      else next.add(key);
+      return next;
+    });
+  };
 
   const runResolveSSE = useCallback(
     async (force: boolean) => {
@@ -192,8 +216,28 @@ export default function RecipesScreen() {
     </>
   );
 
+  const listHeader = (
+    <>
+      <StepNavBar position="top">{navButtons}</StepNavBar>
+
+      <Card>
+        <CardHeader>
+          <H2>Your week of recipes</H2>
+          <Muted>{meals.length} meals</Muted>
+        </CardHeader>
+        <CardBody>
+          <Text style={styles.hint}>
+            {isWeb
+              ? "Build your shop list from these recipes. Filling a supermarket trolley is coming soon."
+              : "Connect Woolworths before we build your shop list. Sign in when prompted, then product search begins automatically."}
+          </Text>
+        </CardBody>
+      </Card>
+    </>
+  );
+
   return (
-    <WizardShell>
+    <WizardShell scrollable={false}>
       <ParallelLoadingModal
         visible={loading || (!isWeb && awaitingWoolworths)}
         title="Building your shop list"
@@ -210,27 +254,27 @@ export default function RecipesScreen() {
         onCancelWoolworths={cancelWoolworthsConnect}
       />
 
-      <StepNavBar position="top">{navButtons}</StepNavBar>
-
-      <Card>
-        <CardHeader>
-          <H2>Your week of recipes</H2>
-          <Muted>{meals.length} meals</Muted>
-        </CardHeader>
-        <CardBody>
-          <Text style={styles.hint}>
-            {isWeb
-              ? "Build your shop list from these recipes. Filling a supermarket trolley is coming soon."
-              : "Connect Woolworths before we build your shop list. Sign in when prompted, then product search begins automatically."}
-          </Text>
-        </CardBody>
-      </Card>
-
-      {byDay.map(({ day, meals: dayMeals }) => (
-        <View key={day} style={{ marginTop: 16 }}>
-          <Text style={styles.dayLabel}>{day.toUpperCase()}</Text>
-          {dayMeals.map((meal, idx) => (
-            <Card key={`${day}-${idx}`} style={{ marginTop: 8 }}>
+      <FlatList
+        style={styles.list}
+        data={mealRows}
+        extraData={expandedMeals}
+        keyExtractor={(item) => item.key}
+        contentContainerStyle={styles.listContent}
+        initialNumToRender={8}
+        maxToRenderPerBatch={6}
+        windowSize={7}
+        removeClippedSubviews={Platform.OS !== "web"}
+        ListHeaderComponent={listHeader}
+        ListFooterComponent={<StepNavBar position="bottom">{navButtons}</StepNavBar>}
+        renderItem={({ item }) => {
+          if (item.kind === "day") {
+            return <Text style={styles.dayLabel}>{item.day.toUpperCase()}</Text>;
+          }
+          const { meal, key } = item;
+          const expanded = expandedMeals.has(key);
+          const ingredientCount = meal.ingredients.length;
+          return (
+            <Card style={styles.mealCard}>
               <CardHeader>
                 <Text style={styles.slot}>{SLOT_LABEL[meal.slot] ?? meal.slot}</Text>
                 <H2>{meal.name}</H2>
@@ -238,29 +282,55 @@ export default function RecipesScreen() {
               </CardHeader>
               <CardBody>
                 <Muted>{meal.description}</Muted>
-                {meal.ingredients.length > 0 && (
-                  <View style={{ marginTop: 8 }}>
-                    {meal.ingredients.map((ing, i) => (
-                      <Text key={i} style={styles.ing}>
-                        • {ing.quantity} {ing.unit} {ing.name}
+                {ingredientCount > 0 ? (
+                  <View style={styles.ingBlock}>
+                    <Pressable
+                      onPress={() => toggleIngredients(key)}
+                      accessibilityRole="button"
+                      accessibilityState={{ expanded }}
+                      testID={`recipes-toggle-ing-${key}`}
+                    >
+                      <Text style={styles.ingToggle}>
+                        {expanded ? "Hide" : "Show"} ingredients ({ingredientCount})
                       </Text>
-                    ))}
+                    </Pressable>
+                    {expanded
+                      ? meal.ingredients.map((ing, i) => (
+                          <Text key={i} style={styles.ing}>
+                            • {ing.quantity} {ing.unit} {ing.name}
+                          </Text>
+                        ))
+                      : null}
                   </View>
-                )}
+                ) : null}
               </CardBody>
             </Card>
-          ))}
-        </View>
-      ))}
-
-      <StepNavBar position="bottom">{navButtons}</StepNavBar>
+          );
+        }}
+      />
     </WizardShell>
   );
 }
 
 const styles = StyleSheet.create({
+  list: { flex: 1 },
+  listContent: { paddingBottom: 160 },
   hint: { fontSize: 13, color: theme.textMuted, lineHeight: 18 },
-  dayLabel: { fontSize: 12, fontWeight: "700", color: theme.textMuted },
+  dayLabel: {
+    fontSize: 12,
+    fontWeight: "700",
+    color: theme.textMuted,
+    marginTop: 16,
+    marginBottom: 4,
+  },
+  mealCard: { marginTop: 8 },
   slot: { fontSize: 11, fontWeight: "700", color: theme.green, textTransform: "uppercase" },
+  ingBlock: { marginTop: 8 },
+  ingToggle: {
+    fontSize: 13,
+    fontWeight: "700",
+    color: theme.green,
+    marginBottom: 6,
+  },
   ing: { fontSize: 13, color: theme.text },
 });

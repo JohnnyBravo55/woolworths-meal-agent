@@ -1,5 +1,5 @@
 import { useRouter } from "expo-router";
-import { useEffect, useState } from "react";
+import { useEffect, useMemo, useState } from "react";
 import { FlatList, Platform, Pressable, StyleSheet, Text, View } from "react-native";
 import type { GroceryLineItem } from "@meal-agent/app-core";
 import { WizardShell } from "@/components/WizardShell";
@@ -28,19 +28,56 @@ function defaultTab(
   return "addable";
 }
 
+function ShopRow({ item }: { item: GroceryLineItem }) {
+  return (
+    <View style={styles.row}>
+      <View style={styles.rowMain}>
+        <Text style={styles.ing}>{item.ingredient}</Text>
+        <Text style={styles.prod}>{item.product_name}</Text>
+        {item.block_reason ? <Text style={styles.block}>{item.block_reason}</Text> : null}
+      </View>
+      <Text style={styles.price}>
+        {item.quantity} {item.unit} · ${item.line_total.toFixed(2)}
+      </Text>
+    </View>
+  );
+}
+
 export default function ShopScreen() {
   const router = useRouter();
   const { shopList, appState, loading, setLoading, setAppState, markStepReached } = useApp();
   const { showForward, goForward } = useWizardNav();
   const [tab, setTab] = useState<"addable" | "blocked" | "manual">("addable");
 
+  const { addable, blocked, manual } = useMemo(() => {
+    if (!shopList) {
+      return {
+        addable: [] as GroceryLineItem[],
+        blocked: [] as GroceryLineItem[],
+        manual: [] as GroceryLineItem[],
+      };
+    }
+    return {
+      addable: shopList.items.filter(isAddable),
+      blocked: shopList.items.filter((i) => i.cart_blocked),
+      manual: shopList.items.filter((i) => i.sku === "OFFLINE"),
+    };
+  }, [shopList]);
+
+  const rows = tab === "addable" ? addable : tab === "blocked" ? blocked : manual;
+  const addableTotal = useMemo(
+    () => (shopList ? api.computeAddableTotal(shopList) : 0),
+    [shopList],
+  );
+  const offlineTotal = useMemo(
+    () => (shopList ? api.computeOfflineTotal(shopList) : 0),
+    [shopList],
+  );
+
   useEffect(() => {
     if (!shopList) return;
-    const add = shopList.items.filter(isAddable);
-    const blk = shopList.items.filter((i) => i.cart_blocked);
-    const man = shopList.items.filter((i) => i.sku === "OFFLINE");
-    setTab(defaultTab(add, blk, man));
-  }, [shopList]);
+    setTab(defaultTab(addable, blocked, manual));
+  }, [shopList, addable, blocked, manual]);
 
   if (!shopList) {
     return (
@@ -50,13 +87,6 @@ export default function ShopScreen() {
       </WizardShell>
     );
   }
-
-  const addable = shopList.items.filter(isAddable);
-  const blocked = shopList.items.filter((i) => i.cart_blocked);
-  const manual = shopList.items.filter((i) => i.sku === "OFFLINE");
-  const rows = tab === "addable" ? addable : tab === "blocked" ? blocked : manual;
-  const addableTotal = api.computeAddableTotal(shopList);
-  const offlineTotal = api.computeOfflineTotal(shopList);
 
   const approve = async () => {
     setLoading(true);
@@ -78,8 +108,8 @@ export default function ShopScreen() {
     </>
   );
 
-  return (
-    <WizardShell>
+  const listHeader = (
+    <>
       <StepNavBar position="top">{navButtons}</StepNavBar>
       <Card>
         <CardBody>
@@ -127,36 +157,13 @@ export default function ShopScreen() {
           </Pressable>
         ))}
       </View>
+    </>
+  );
 
-      <FlatList
-        data={rows}
-        keyExtractor={(item, i) => `${item.ingredient}-${i}`}
-        scrollEnabled={false}
-        renderItem={({ item }) => (
-          <View style={styles.row}>
-            <View style={{ flex: 1 }}>
-              <Text style={styles.ing}>{item.ingredient}</Text>
-              <Text style={styles.prod}>{item.product_name}</Text>
-              {item.block_reason && <Text style={styles.block}>{item.block_reason}</Text>}
-            </View>
-            <Text style={styles.price}>
-              {item.quantity} {item.unit} · ${item.line_total.toFixed(2)}
-            </Text>
-          </View>
-        )}
-        ListEmptyComponent={
-          <Text style={styles.empty}>
-            {shopList.items.length === 0
-              ? "Nothing to show yet."
-              : tab === "addable"
-                ? `No auto-add items — try Manual (${manual.length}) if you see estimated prices.`
-                : "No items in this tab."}
-          </Text>
-        }
-      />
-
+  const listFooter = (
+    <>
       {(appState?.budget_suggestions?.length ?? 0) > 0 && (
-        <Card style={{ marginTop: 16 }}>
+        <Card style={styles.footerCard}>
           <CardHeader>
             <H2>Budget suggestions</H2>
           </CardHeader>
@@ -170,16 +177,46 @@ export default function ShopScreen() {
         </Card>
       )}
 
-      <View style={{ marginTop: 16 }}>
+      <View style={styles.footerCard}>
         <PriceCheckPanel />
       </View>
 
       <StepNavBar position="bottom">{navButtons}</StepNavBar>
+    </>
+  );
+
+  return (
+    <WizardShell scrollable={false}>
+      <FlatList
+        style={styles.list}
+        data={rows}
+        keyExtractor={(item, i) => `${item.ingredient}-${i}`}
+        renderItem={({ item }) => <ShopRow item={item} />}
+        ListHeaderComponent={listHeader}
+        ListFooterComponent={listFooter}
+        ListEmptyComponent={
+          <Text style={styles.empty}>
+            {shopList.items.length === 0
+              ? "Nothing to show yet."
+              : tab === "addable"
+                ? `No auto-add items — try Manual (${manual.length}) if you see estimated prices.`
+                : "No items in this tab."}
+          </Text>
+        }
+        contentContainerStyle={styles.listContent}
+        initialNumToRender={12}
+        maxToRenderPerBatch={8}
+        windowSize={7}
+        removeClippedSubviews={Platform.OS !== "web"}
+        keyboardShouldPersistTaps="handled"
+      />
     </WizardShell>
   );
 }
 
 const styles = StyleSheet.create({
+  list: { flex: 1 },
+  listContent: { paddingBottom: 160 },
   summary: { fontSize: 14, color: theme.text, marginBottom: 8 },
   banner: {
     marginTop: 12,
@@ -202,10 +239,12 @@ const styles = StyleSheet.create({
     borderBottomColor: theme.border,
     gap: 8,
   },
+  rowMain: { flex: 1 },
   ing: { fontWeight: "600", color: theme.text },
   prod: { fontSize: 12, color: theme.textMuted, marginTop: 2 },
   block: { fontSize: 11, color: theme.red, marginTop: 4 },
   price: { fontSize: 13, color: theme.text, fontWeight: "600" },
   empty: { color: theme.textMuted, padding: 16 },
   suggestion: { fontSize: 13, color: theme.text, marginBottom: 4 },
+  footerCard: { marginTop: 16 },
 });

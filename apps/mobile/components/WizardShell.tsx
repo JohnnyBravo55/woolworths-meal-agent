@@ -16,7 +16,13 @@ import { WoolworthsStatus } from "@/components/WoolworthsStatus";
 import { theme } from "@/constants/theme";
 import { webLayout } from "@/lib/web-layout";
 
-export function WizardShell({ children }: { children: React.ReactNode }) {
+type WizardShellProps = {
+  children: React.ReactNode;
+  /** When false, children own scrolling (e.g. FlatList). Default true. */
+  scrollable?: boolean;
+};
+
+export function WizardShell({ children, scrollable = true }: WizardShellProps) {
   const isWeb = Platform.OS === "web";
   const router = useRouter();
   const segments = useSegments();
@@ -26,9 +32,10 @@ export function WizardShell({ children }: { children: React.ReactNode }) {
   const scrollRef = useRef<ScrollView>(null);
 
   useEffect(() => {
+    if (!scrollable) return;
     // Reset scroll when changing wizard steps (e.g. plan → recipes).
     scrollRef.current?.scrollTo({ y: 0, animated: false });
-  }, [route]);
+  }, [route, scrollable]);
 
   const onConnect = () => {
     if (isWeb) {
@@ -65,16 +72,22 @@ export function WizardShell({ children }: { children: React.ReactNode }) {
         behavior={Platform.OS === "ios" ? "padding" : undefined}
         keyboardVerticalOffset={Platform.OS === "ios" ? 8 : 0}
       >
-        <ScrollView
-          ref={scrollRef}
-          style={styles.flex}
-          contentContainerStyle={[styles.main, isWeb && webLayout?.main]}
-          keyboardShouldPersistTaps="handled"
-          automaticallyAdjustKeyboardInsets
-          keyboardDismissMode="on-drag"
-        >
-          <View style={isWeb ? webLayout?.page : undefined}>{children}</View>
-        </ScrollView>
+        {scrollable ? (
+          <ScrollView
+            ref={scrollRef}
+            style={styles.flex}
+            contentContainerStyle={[styles.main, isWeb && webLayout?.main]}
+            keyboardShouldPersistTaps="handled"
+            automaticallyAdjustKeyboardInsets
+            keyboardDismissMode="on-drag"
+          >
+            <View style={isWeb ? webLayout?.page : undefined}>{children}</View>
+          </ScrollView>
+        ) : (
+          <View style={[styles.flex, styles.mainPad, isWeb && webLayout?.main]}>
+            <View style={[styles.flex, isWeb && webLayout?.page]}>{children}</View>
+          </View>
+        )}
       </KeyboardAvoidingView>
       <Text style={styles.footer}>
         {isWeb
@@ -105,6 +118,7 @@ const styles = StyleSheet.create({
     marginBottom: 2,
   },
   main: { padding: 16, paddingBottom: 160 },
+  mainPad: { paddingHorizontal: 16, paddingTop: 16 },
   footer: {
     textAlign: "center",
     fontSize: 11,
