@@ -2,6 +2,10 @@
 
 from __future__ import annotations
 
+import json
+import re
+from functools import lru_cache
+from pathlib import Path
 from typing import Any
 
 import httpx
@@ -21,53 +25,98 @@ _HEADERS = {
     "Referer": "https://www.woolworths.co.nz/",
 }
 
-# Online catalogue is fulfilment-based; expose named hubs for picker UX.
-_WOOLWORTHS_HUBS: list[StoreRef] = [
-    StoreRef(
-        id="woolworths:online",
-        chain=StoreChain.WOOLWORTHS,
-        name="Woolworths Online",
-        address="Nationwide online catalogue",
-        suburb="Online",
-        pricing_note="Online catalogue prices (login not required)",
-    ),
-    StoreRef(
-        id="woolworths:auckland",
-        chain=StoreChain.WOOLWORTHS,
-        name="Woolworths Auckland (online prices)",
-        address="Auckland region online catalogue",
-        suburb="Auckland",
-        pricing_note="Online catalogue prices",
-    ),
-    StoreRef(
-        id="woolworths:wellington",
-        chain=StoreChain.WOOLWORTHS,
-        name="Woolworths Wellington (online prices)",
-        address="Wellington region online catalogue",
-        suburb="Wellington",
-        pricing_note="Online catalogue prices",
-    ),
-    StoreRef(
-        id="woolworths:christchurch",
-        chain=StoreChain.WOOLWORTHS,
-        name="Woolworths Christchurch (online prices)",
-        address="Christchurch region online catalogue",
-        suburb="Christchurch",
-        pricing_note="Online catalogue prices",
-    ),
-    StoreRef(
-        id="woolworths:hamilton",
-        chain=StoreChain.WOOLWORTHS,
-        name="Woolworths Hamilton (online prices)",
-        address="Hamilton region online catalogue",
-        suburb="Hamilton",
-        pricing_note="Online catalogue prices",
-    ),
-]
+_DATA_PATH = Path(__file__).with_name("data") / "woolworths_nz_stores.json"
+
+
+def _slug(text: str) -> str:
+    slug = re.sub(r"[^a-z0-9]+", "-", text.lower().strip()).strip("-")
+    return slug or "local"
+
+
+@lru_cache(maxsize=1)
+def _load_location_rows() -> list[dict[str, Any]]:
+    if not _DATA_PATH.exists():
+        return []
+    try:
+        raw = json.loads(_DATA_PATH.read_text(encoding="utf-8"))
+    except (OSError, json.JSONDecodeError):
+        return []
+    return raw if isinstance(raw, list) else []
 
 
 def list_stores() -> list[StoreRef]:
-    return list(_WOOLWORTHS_HUBS)
+    stores = [
+        StoreRef(
+            id="woolworths:online",
+            chain=StoreChain.WOOLWORTHS,
+            name="Woolworths Online",
+            address="Nationwide online catalogue",
+            suburb="Online",
+            pricing_note="Online catalogue prices (login not required)",
+        )
+    ]
+    for row in _load_location_rows():
+        name = str(row.get("name") or "").strip()
+        suburb = str(row.get("suburb") or "").strip()
+        address = str(row.get("address") or suburb).strip()
+        if not name:
+            continue
+        stores.append(
+            StoreRef(
+                id=f"woolworths:{_slug(suburb or name)}",
+                chain=StoreChain.WOOLWORTHS,
+                name=name if name.lower().startswith("woolworths") else f"Woolworths {name}",
+                address=address,
+                suburb=suburb or address,
+                latitude=row.get("lat"),
+                longitude=row.get("lon"),
+                pricing_note="Online catalogue prices",
+            )
+        )
+    # Deduplicate by id, keep first
+    seen: set[str] = set()
+    unique: list[StoreRef] = []
+    for store in stores:
+        if store.id in seen:
+            continue
+        seen.add(store.id)
+        unique.append(store)
+    return unique
+
+
+def store_from_query(query: str) -> StoreRef | None:
+    """Build a selectable Woolworths locality from free-text suburb search."""
+    q = query.strip()
+    if len(q) < 2:
+        return None
+    label = q.title()
+    return StoreRef(
+        id=f"woolworths:local:{_slug(q)}",
+        chain=StoreChain.WOOLWORTHS,
+        name=f"Woolworths {label} (online prices)",
+        address=f"{label}, New Zealand",
+        suburb=label,
+        pricing_note="Online catalogue prices",
+    )
+
+
+def resolve_store_id(store_id: str) -> StoreRef | None:
+    if not store_id.startswith("woolworths:"):
+        return None
+    for store in list_stores():
+        if store.id == store_id:
+            return store
+    if store_id.startswith("woolworths:local:"):
+        label = store_id.split(":", 2)[-1].replace("-", " ").title()
+        return StoreRef(
+            id=store_id,
+            chain=StoreChain.WOOLWORTHS,
+            name=f"Woolworths {label} (online prices)",
+            address=f"{label}, New Zealand",
+            suburb=label,
+            pricing_note="Online catalogue prices",
+        )
+    return None
 
 
 async def search_products(query: str, *, limit: int = 8) -> list[dict[str, Any]]:

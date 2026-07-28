@@ -52,6 +52,20 @@ async def search_stores(query: str = "", chain: StoreChain | None = None, *, lim
             or q in s.suburb.lower()
             or q in s.chain.value.replace("_", " ")
         ]
+        # Woolworths online catalogue is nationwide — always offer a locality pick
+        # when the typed suburb isn't in the static list.
+        if chain in (None, StoreChain.WOOLWORTHS) and not any(
+            s.chain == StoreChain.WOOLWORTHS for s in stores
+        ):
+            synthetic = woolworths_public.store_from_query(query)
+            if synthetic:
+                stores = [synthetic, *stores]
+        elif chain == StoreChain.WOOLWORTHS and stores and not any(
+            q in s.suburb.lower() or q in s.name.lower() for s in stores
+        ):
+            synthetic = woolworths_public.store_from_query(query)
+            if synthetic and all(s.id != synthetic.id for s in stores):
+                stores = [synthetic, *stores]
     return stores[:limit]
 
 
@@ -61,6 +75,10 @@ async def get_store(store_id: str) -> StoreRef | None:
         chain = StoreChain(chain_key)
     except ValueError:
         return None
+    if chain == StoreChain.WOOLWORTHS:
+        resolved = woolworths_public.resolve_store_id(store_id)
+        if resolved is not None:
+            return resolved
     stores = await _load_chain(chain)
     for store in stores:
         if store.id == store_id:

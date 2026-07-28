@@ -89,3 +89,24 @@ def test_compute_split_none_for_single_store():
 def test_score_product_name_rejects_unrelated():
     assert score_product_name("milk", "chicken thighs") == 0.0
     assert score_product_name("milk", "Standard Milk") > 0
+
+
+@pytest.mark.asyncio
+async def test_woolworths_suburb_search_finds_ferrymead():
+    from price_check.directory import search_stores
+    from price_check.models import StoreChain
+
+    stores = await search_stores("Ferrymead", StoreChain.WOOLWORTHS, limit=10)
+    assert stores
+    assert any("ferrymead" in s.name.lower() or "ferrymead" in s.suburb.lower() for s in stores)
+
+
+@pytest.mark.asyncio
+async def test_woolworths_unknown_suburb_offers_synthetic():
+    from price_check.directory import search_stores
+    from price_check.models import StoreChain
+
+    stores = await search_stores("Someobscureville", StoreChain.WOOLWORTHS, limit=5)
+    assert stores
+    assert stores[0].id.startswith("woolworths:local:")
+
