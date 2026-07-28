@@ -175,6 +175,13 @@ export default function PlanScreen() {
               const isChecked = checked.has(index);
               return (
                 <View key={slot} style={styles.mealRow}>
+                  <Pressable style={styles.mealMain} onPress={() => setSelected(meal)}>
+                    <Badge>{slot}</Badge>
+                    <Text style={styles.mealName} selectable={false}>
+                      {meal.name}
+                    </Text>
+                    <Text style={styles.prep}>{meal.prep_time_minutes}m</Text>
+                  </Pressable>
                   <Pressable
                     accessibilityRole="checkbox"
                     accessibilityState={{ checked: isChecked }}
@@ -184,13 +191,6 @@ export default function PlanScreen() {
                     testID={`plan-meal-check-${index}`}
                   >
                     {isChecked ? <Text style={styles.checkboxMark}>✓</Text> : null}
-                  </Pressable>
-                  <Pressable style={styles.mealMain} onPress={() => setSelected(meal)}>
-                    <Badge>{slot}</Badge>
-                    <Text style={styles.mealName} selectable={false}>
-                      {meal.name}
-                    </Text>
-                    <Text style={styles.prep}>{meal.prep_time_minutes}m</Text>
                   </Pressable>
                 </View>
               );

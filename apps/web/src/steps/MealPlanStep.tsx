@@ -156,23 +156,25 @@ export function MealPlanStep({
                                 : "border-slate-200 bg-slate-50"
                             }`}
                           >
-                            <label className="mb-2 flex items-center gap-2 text-xs text-slate-600 select-none">
-                              <input
-                                type="checkbox"
-                                checked={isChecked}
-                                onChange={() => toggleMeal(index)}
-                                className="h-4 w-4 accent-[var(--ww-green)]"
-                              />
-                              Regenerate
-                            </label>
-                            <button
-                              type="button"
-                              onClick={() => setSelected(meal)}
-                              className="w-full text-left"
-                            >
-                              <div className="font-medium text-slate-900 line-clamp-2">{meal.name}</div>
-                              <Badge tone="default">{meal.prep_time_minutes}m</Badge>
-                            </button>
+                            <div className="flex items-start gap-2">
+                              <button
+                                type="button"
+                                onClick={() => setSelected(meal)}
+                                className="min-w-0 flex-1 text-left"
+                              >
+                                <div className="font-medium text-slate-900 line-clamp-2">{meal.name}</div>
+                                <Badge tone="default">{meal.prep_time_minutes}m</Badge>
+                              </button>
+                              <label className="mt-0.5 flex shrink-0 items-center gap-1 text-xs text-slate-600 select-none">
+                                <span className="sr-only">Regenerate</span>
+                                <input
+                                  type="checkbox"
+                                  checked={isChecked}
+                                  onChange={() => toggleMeal(index)}
+                                  className="h-4 w-4 accent-[var(--ww-green)]"
+                                />
+                              </label>
+                            </div>
                           </div>
                         ) : (
                           <span className="text-slate-300">—</span>
