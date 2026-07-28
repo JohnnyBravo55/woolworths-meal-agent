@@ -671,3 +671,159 @@ class MealPlanner:
                 break
 
         return _build_plan_shopping_list(plan, profile)
+
+    async def regenerate_meals(
+        self,
+        plan: MealPlan,
+        meal_indices: list[int],
+        profile: UserProfile,
+    ) -> MealPlan:
+        """Replace selected meals; keep the rest of the plan unchanged."""
+        unique = sorted({i for i in meal_indices if 0 <= i < len(plan.meals)})
+        if not unique:
+            raise ValueError("Select at least one meal to regenerate")
+
+        # Full selection → full regenerate for better week coherence.
+        if len(unique) == len(plan.meals):
+            return await self.generate(profile)
+
+        if self.api_key:
+            try:
+                return await self._regenerate_meals_with_llm(plan, unique, profile)
+            except Exception as exc:
+                self._last_llm_error = self._format_llm_error(exc)
+                if is_premium_chef(profile.chef_id):
+                    raise MealPlanLLMError(self._last_llm_error) from exc
+
+        updated = plan.model_copy(deep=True)
+        for idx in unique:
+            updated = self.swap_meal(updated, idx, profile)
+        return updated
+
+    async def _regenerate_meals_with_llm(
+        self,
+        plan: MealPlan,
+        meal_indices: list[int],
+        profile: UserProfile,
+    ) -> MealPlan:
+        from openai import AsyncOpenAI
+
+        chef = get_chef(profile.chef_id)
+        targets = []
+        for idx in meal_indices:
+            meal = plan.meals[idx]
+            targets.append(
+                {
+                    "index": idx,
+                    "slot": meal.slot.value,
+                    "day_label": meal.day_label,
+                    "current_name": meal.name,
+                    "current_description": meal.description,
+                }
+            )
+
+        keep_summary = [
+            {
+                "slot": m.slot.value,
+                "day_label": m.day_label,
+                "name": m.name,
+            }
+            for i, m in enumerate(plan.meals)
+            if i not in set(meal_indices)
+        ]
+
+        prompt = json.dumps(
+            {
+                "task": (
+                    "Regenerate ONLY the listed meals in an existing meal plan. "
+                    "Keep day_label and slot exactly as given. "
+                    "Choose different dishes from the current_name. "
+                    "Match the chef style and user constraints. "
+                    "Do not return meals that were not requested."
+                ),
+                "constraints": json.loads(self._build_prompt(profile))["constraints"],
+                "meals_to_keep_unchanged": keep_summary,
+                "meals_to_regenerate": targets,
+                "output_schema": {
+                    "meals": [
+                        {
+                            "index": "int — must match meals_to_regenerate index",
+                            "name": "string",
+                            "slot": "breakfast|lunch|dinner|snack — must match target",
+                            "day_label": "must match target",
+                            "description": "string",
+                            "prep_time_minutes": "int",
+                            "ingredients": [
+                                {"name": "string", "quantity": "float", "unit": "string"}
+                            ],
+                            "steps": ["string"],
+                        }
+                    ],
+                    "chef_notes": "optional short note about the replacements",
+                },
+            },
+            indent=2,
+        )
+
+        client = AsyncOpenAI(api_key=self.api_key)
+        response = await client.chat.completions.create(
+            model=self.model,
+            messages=[
+                {"role": "system", "content": chef.system_prompt},
+                {"role": "user", "content": prompt},
+            ],
+            response_format={"type": "json_object"},
+            temperature=0.7,
+        )
+        content = response.choices[0].message.content or "{}"
+        data = json.loads(content)
+
+        updated = plan.model_copy(deep=True)
+        by_index: dict[int, Meal] = {}
+        for item in data.get("meals", []):
+            try:
+                idx = int(item.get("index"))
+            except (TypeError, ValueError):
+                continue
+            if idx not in meal_indices:
+                continue
+            target = plan.meals[idx]
+            try:
+                slot = MealSlot(item.get("slot", target.slot.value))
+            except ValueError:
+                slot = target.slot
+            ingredients = [
+                Ingredient(
+                    name=ing["name"],
+                    quantity=float(ing.get("quantity", 1)),
+                    unit=ing.get("unit", "each"),
+                )
+                for ing in item.get("ingredients", [])
+            ]
+            by_index[idx] = Meal(
+                name=item.get("name") or target.name,
+                slot=slot if slot == target.slot else target.slot,
+                day_label=target.day_label,
+                description=item.get("description", ""),
+                prep_time_minutes=int(item.get("prep_time_minutes", target.prep_time_minutes)),
+                ingredients=ingredients,
+                steps=item.get("steps", []),
+            )
+
+        for idx, meal in by_index.items():
+            updated.meals[idx] = meal
+        updated.meals = _sanitize_meals_for_profile(updated.meals, profile)
+        updated.meals = split_compound_ingredients(updated.meals)
+        updated.meals = enforce_culinary_coherence(updated.meals)
+
+        # Any index the model skipped → template swap so every selection changes.
+        for idx in meal_indices:
+            if idx not in by_index:
+                updated = self.swap_meal(updated, idx, profile)
+
+        note = (data.get("chef_notes") or "").strip()
+        if note:
+            prefix = (updated.chef_notes or "").strip()
+            updated.chef_notes = f"{prefix} {note}".strip() if prefix else note
+        return _build_plan_shopping_list(updated, profile)
+

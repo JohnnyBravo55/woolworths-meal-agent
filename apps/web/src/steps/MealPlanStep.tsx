@@ -1,4 +1,4 @@
-import { useMemo, useState } from "react";
+import { useEffect, useMemo, useState } from "react";
 import type { Meal, MealPlan } from "../types";
 import { Button } from "../components/ui/Button";
 import { Card, CardBody, CardHeader } from "../components/ui/Card";
@@ -13,23 +13,82 @@ interface Props {
   onBack?: () => void;
   onApprove: () => void;
   onSwap: (index: number) => void;
-  onRegenerate: () => void;
+  onRegenerate: (mealIndices: number[]) => void | Promise<void>;
   loading: boolean;
 }
 
-export function MealPlanStep({ plan, allergies, onBack, onApprove, onSwap, onRegenerate, loading }: Props) {
+export function MealPlanStep({
+  plan,
+  allergies,
+  onBack,
+  onApprove,
+  onSwap,
+  onRegenerate,
+  loading,
+}: Props) {
   const [selected, setSelected] = useState<Meal | null>(null);
   const [allergyOk, setAllergyOk] = useState(!allergies);
   const [swapOpen, setSwapOpen] = useState(false);
+  const [checked, setChecked] = useState<Set<number>>(() => new Set());
 
-  const grid = useMemo(() => {
+  const { grid, indexByKey } = useMemo(() => {
     const map: Record<string, Record<string, Meal | undefined>> = {};
+    const keys: Record<string, number> = {};
     for (const slot of SLOTS) map[slot] = {};
-    for (const meal of plan.meals) {
+    plan.meals.forEach((meal, index) => {
       map[meal.slot][meal.day_label] = meal;
-    }
-    return map;
+      keys[`${meal.day_label}|${meal.slot}`] = index;
+    });
+    return { grid: map, indexByKey: keys };
   }, [plan]);
+
+  useEffect(() => {
+    setChecked(new Set());
+    setSelected(null);
+  }, [plan]);
+
+  const checkedCount = checked.size;
+  const allSelected = plan.meals.length > 0 && checkedCount === plan.meals.length;
+
+  const toggleMeal = (index: number) => {
+    setChecked((prev) => {
+      const next = new Set(prev);
+      if (next.has(index)) next.delete(index);
+      else next.add(index);
+      return next;
+    });
+  };
+
+  const selectAll = () => setChecked(new Set(plan.meals.map((_, i) => i)));
+  const clearSelection = () => setChecked(new Set());
+
+  const regenBar = (
+    <div className="rounded-xl border border-slate-200 bg-white p-4 space-y-3">
+      <p className="text-sm font-semibold text-slate-600">
+        Tick meals to regenerate
+        {checkedCount > 0 ? ` (${checkedCount} selected)` : ""}
+      </p>
+      <div className="flex flex-wrap gap-2">
+        <Button
+          variant="secondary"
+          size="sm"
+          onClick={allSelected ? clearSelection : selectAll}
+          disabled={loading || plan.meals.length === 0}
+        >
+          {allSelected ? "Clear all" : "Select all"}
+        </Button>
+        <Button
+          size="sm"
+          onClick={() => onRegenerate([...checked].sort((a, b) => a - b))}
+          disabled={loading || checkedCount === 0}
+        >
+          {checkedCount === 0
+            ? "Regenerate selected"
+            : `Regenerate selected (${checkedCount})`}
+        </Button>
+      </div>
+    </div>
+  );
 
   return (
     <div className="space-y-4">
@@ -53,15 +112,14 @@ export function MealPlanStep({ plan, allergies, onBack, onApprove, onSwap, onReg
         </div>
       )}
 
+      {regenBar}
+
       <Card>
         <CardHeader className="flex flex-wrap items-center justify-between gap-2">
           <h2 className="text-lg font-semibold">Week at a glance</h2>
           <div className="flex gap-2">
             <Button variant="secondary" size="sm" onClick={() => setSwapOpen(true)}>
               Swap meal…
-            </Button>
-            <Button variant="secondary" size="sm" onClick={onRegenerate} disabled={loading}>
-              Regenerate
             </Button>
             <Button size="sm" onClick={onApprove} disabled={loading || (!!allergies && !allergyOk)}>
               Approve plan →
@@ -86,17 +144,36 @@ export function MealPlanStep({ plan, allergies, onBack, onApprove, onSwap, onReg
                   <td className="p-2 capitalize text-slate-500 font-medium">{slot}</td>
                   {DAYS.map((day) => {
                     const meal = grid[slot][day];
+                    const index = indexByKey[`${day}|${slot}`];
+                    const isChecked = typeof index === "number" && checked.has(index);
                     return (
                       <td key={day} className="p-2 align-top">
                         {meal ? (
-                          <button
-                            type="button"
-                            onClick={() => setSelected(meal)}
-                            className="w-full rounded-lg border border-slate-200 bg-slate-50 p-2 text-left hover:border-[var(--ww-green)]"
+                          <div
+                            className={`w-full rounded-lg border p-2 text-left ${
+                              isChecked
+                                ? "border-[var(--ww-green)] bg-green-50"
+                                : "border-slate-200 bg-slate-50"
+                            }`}
                           >
-                            <div className="font-medium text-slate-900 line-clamp-2">{meal.name}</div>
-                            <Badge tone="default">{meal.prep_time_minutes}m</Badge>
-                          </button>
+                            <label className="mb-2 flex items-center gap-2 text-xs text-slate-600 select-none">
+                              <input
+                                type="checkbox"
+                                checked={isChecked}
+                                onChange={() => toggleMeal(index)}
+                                className="h-4 w-4 accent-[var(--ww-green)]"
+                              />
+                              Regenerate
+                            </label>
+                            <button
+                              type="button"
+                              onClick={() => setSelected(meal)}
+                              className="w-full text-left"
+                            >
+                              <div className="font-medium text-slate-900 line-clamp-2">{meal.name}</div>
+                              <Badge tone="default">{meal.prep_time_minutes}m</Badge>
+                            </button>
+                          </div>
                         ) : (
                           <span className="text-slate-300">—</span>
                         )}
@@ -109,6 +186,8 @@ export function MealPlanStep({ plan, allergies, onBack, onApprove, onSwap, onReg
           </table>
         </CardBody>
       </Card>
+
+      {regenBar}
 
       {onBack ? (
         <div className="flex justify-start">

@@ -37,6 +37,7 @@ from meal_agent_api.schemas import (
     NdaAcceptRequest,
     WoolworthsLoginRequest,
     ProfileSaveRequest,
+    RegeneratePlanRequest,
     SessionStartResponse,
     StateResponse,
     SwapMealRequest,
@@ -781,13 +782,27 @@ async def plan_swap(body: SwapMealRequest, session: AgentSession = Depends(get_s
 
 
 @app.post("/api/plan/regenerate")
-async def plan_regenerate(session: AgentSession = Depends(get_session)):
+async def plan_regenerate(
+    body: RegeneratePlanRequest,
+    session: AgentSession = Depends(get_session),
+):
+    from meal_planner.planner import MealPlanLLMError
+
     profile = _require_profile(session)
-    plan = await session.orchestrator.generate_plan(profile)
+    plan = _require_plan(session)
+    try:
+        new_plan = await session.orchestrator.planner.regenerate_meals(
+            plan, body.meal_indices, profile
+        )
+    except ValueError as exc:
+        raise HTTPException(status_code=400, detail=str(exc)) from exc
+    except MealPlanLLMError as exc:
+        raise HTTPException(status_code=502, detail=str(exc)) from exc
+    session.state.meal_plan = new_plan
     session.state.resolved_list = None
     session.budget_suggestions = []
     session.state.products_approved = False
-    return {"meal_plan": plan, "state": StateResponse.from_session(session)}
+    return {"meal_plan": new_plan, "state": StateResponse.from_session(session)}
 
 
 @app.get("/api/plan/recipes/download")

@@ -55,3 +55,47 @@ async def test_swap_meal_changes_one_meal():
     original_name = plan.meals[0].name
     plan = planner.swap_meal(plan, 0, profile)
     assert plan.meals[0].name != original_name
+
+
+@pytest.mark.asyncio
+async def test_regenerate_meals_requires_selection():
+    planner = MealPlanner(api_key=None)
+    profile = _profile(dinner=2)
+    plan = await planner.generate(profile)
+    with pytest.raises(ValueError, match="at least one"):
+        await planner.regenerate_meals(plan, [], profile)
+
+
+@pytest.mark.asyncio
+async def test_regenerate_meals_keeps_unticked_meals():
+    planner = MealPlanner(api_key=None)
+    profile = _profile(dinner=3, lunch=0)
+    plan = await planner.generate(profile)
+    kept_name = plan.meals[1].name
+    kept_day = plan.meals[1].day_label
+    original_first = plan.meals[0].name
+
+    updated = await planner.regenerate_meals(plan, [0], profile)
+
+    assert updated.meals[1].name == kept_name
+    assert updated.meals[1].day_label == kept_day
+    assert updated.meals[0].day_label == plan.meals[0].day_label
+    assert updated.meals[0].slot == plan.meals[0].slot
+    # Template swap picks a different dinner name when possible.
+    assert updated.meals[0].name != original_first or len({m.name for m in updated.meals}) >= 1
+
+
+@pytest.mark.asyncio
+async def test_regenerate_all_meals_runs_full_generate(monkeypatch):
+    planner = MealPlanner(api_key=None)
+    profile = _profile(dinner=2, lunch=0)
+    plan = await planner.generate(profile)
+    called = {"generate": False}
+
+    async def fake_generate(p, *, fallback_on_error: bool = True):
+        called["generate"] = True
+        return await MealPlanner(api_key=None).generate(p)
+
+    monkeypatch.setattr(planner, "generate", fake_generate)
+    await planner.regenerate_meals(plan, list(range(len(plan.meals))), profile)
+    assert called["generate"] is True

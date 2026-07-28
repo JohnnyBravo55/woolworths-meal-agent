@@ -45,6 +45,10 @@ class SwapMealRequest(BaseModel):
     meal_index: int = Field(ge=0)
 
 
+class RegeneratePlanRequest(BaseModel):
+    meal_indices: list[int] = Field(min_length=1)
+
+
 class WoolworthsLoginRequest(BaseModel):
     """Interactive Woolworths sign-in — polls browser cookies after user signs in."""
 

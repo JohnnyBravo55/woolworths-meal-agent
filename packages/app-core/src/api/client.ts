@@ -274,9 +274,10 @@ export function createApiClient(config: ApiClientConfig) {
         body: JSON.stringify({ meal_index: mealIndex }),
       }),
 
-    regeneratePlan: () =>
+    regeneratePlan: (mealIndices: number[]) =>
       jsonFetch<{ meal_plan: MealPlan; state: AppState }>("/api/plan/regenerate", {
         method: "POST",
+        body: JSON.stringify({ meal_indices: mealIndices }),
       }),
 
     approveShop: () => jsonFetch<{ state: AppState }>("/api/shop/approve", { method: "POST" }),

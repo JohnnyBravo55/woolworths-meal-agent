@@ -507,10 +507,10 @@ export default function App() {
                 setLoading(false);
               }
             }}
-            onRegenerate={async () => {
+            onRegenerate={async (mealIndices) => {
               setLoading(true);
               try {
-                const res = await regeneratePlan();
+                const res = await regeneratePlan(mealIndices);
                 setMealPlan(res.meal_plan);
                 setPlanChefId(selectedChefId);
                 setShopList(null);

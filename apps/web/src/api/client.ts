@@ -78,8 +78,8 @@ export async function swapMeal(mealIndex: number) {
   return api.swapMeal(mealIndex);
 }
 
-export async function regeneratePlan() {
-  return api.regeneratePlan();
+export async function regeneratePlan(mealIndices: number[]) {
+  return api.regeneratePlan(mealIndices);
 }
 
 export async function approveShop() {
