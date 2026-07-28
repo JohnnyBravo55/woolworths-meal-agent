@@ -4,6 +4,7 @@ import { computeAddableTotal, computeOfflineTotal, exportCsvUrl, exportMarkdownU
 import { Button } from "../components/ui/Button";
 import { Card, CardBody, CardHeader } from "../components/ui/Card";
 import { Badge } from "../components/ui/Badge";
+import { PriceCheckPanel } from "../components/PriceCheckPanel";
 
 interface Props {
   list: ResolvedGroceryList;
@@ -191,6 +192,8 @@ export function ShopListStep({ list, suggestions, onApprove, onBack, loading }: 
           </table>
         </CardBody>
       </Card>
+
+      <PriceCheckPanel />
 
       <div className="flex justify-between">
         {onBack ? (

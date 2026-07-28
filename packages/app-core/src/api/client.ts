@@ -4,7 +4,10 @@ import type {
   ChefPersona,
   DiscoveryAnswers,
   MealPlan,
+  PriceCheckResult,
   ResolvedGroceryList,
+  StoreChain,
+  StoreRef,
   WoolworthsCookie,
 } from "../types";
 import type { SessionStore } from "./session-store";
@@ -281,6 +284,24 @@ export function createApiClient(config: ApiClientConfig) {
       }),
 
     approveShop: () => jsonFetch<{ state: AppState }>("/api/shop/approve", { method: "POST" }),
+
+    searchStores: (opts?: { q?: string; chain?: StoreChain; limit?: number }) => {
+      const params = new URLSearchParams();
+      if (opts?.q) params.set("q", opts.q);
+      if (opts?.chain) params.set("chain", opts.chain);
+      if (opts?.limit) params.set("limit", String(opts.limit));
+      const qs = params.toString();
+      return jsonFetch<{ stores: StoreRef[] }>(`/api/stores/search${qs ? `?${qs}` : ""}`);
+    },
+
+    runPriceCheck: (opts: { store_ids: string[]; include_split?: boolean }) =>
+      jsonFetch<PriceCheckResult>("/api/price-check", {
+        method: "POST",
+        body: JSON.stringify({
+          store_ids: opts.store_ids,
+          include_split: opts.include_split ?? false,
+        }),
+      }),
 
     addToCart: (opts: { allow_over_budget?: boolean; export_only?: boolean }) =>
       jsonFetch<CartResult>("/api/cart/add-after-approve", {

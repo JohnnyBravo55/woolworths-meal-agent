@@ -87,6 +87,11 @@ class CartAddRequest(BaseModel):
     export_only: bool = False
 
 
+class PriceCheckRequestBody(BaseModel):
+    store_ids: list[str] = Field(min_length=1)
+    include_split: bool = False
+
+
 class SessionStartResponse(BaseModel):
     session_id: str
     phase: AgentPhase

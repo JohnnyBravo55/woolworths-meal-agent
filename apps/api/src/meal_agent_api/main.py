@@ -36,6 +36,7 @@ from meal_agent_api.schemas import (
     ImportWoolworthsCookiesRequest,
     NdaAcceptRequest,
     WoolworthsLoginRequest,
+    PriceCheckRequestBody,
     ProfileSaveRequest,
     RegeneratePlanRequest,
     SessionStartResponse,
@@ -1195,6 +1196,54 @@ async def shop_approve(session: AgentSession = Depends(get_session)):
         raise HTTPException(status_code=400, detail="No shop list")
     session.orchestrator.approve_products(True)
     return {"state": StateResponse.from_session(session)}
+
+
+# --- Multi-store price check (login-free) ---
+
+
+@app.get("/api/stores/search")
+async def stores_search(q: str = "", chain: str | None = None, limit: int = 40):
+    from price_check.directory import search_stores
+    from price_check.models import StoreChain
+
+    chain_enum = None
+    if chain:
+        try:
+            chain_enum = StoreChain(chain)
+        except ValueError as exc:
+            raise HTTPException(
+                status_code=400,
+                detail="chain must be woolworths|paknsave|new_world|freshchoice",
+            ) from exc
+    stores = await search_stores(q, chain_enum, limit=max(1, min(limit, 100)))
+    return {"stores": [s.model_dump(mode="json") for s in stores]}
+
+
+@app.post("/api/price-check")
+async def price_check(
+    body: PriceCheckRequestBody,
+    session: AgentSession = Depends(get_session),
+):
+    from price_check.service import price_check_for_items
+
+    resolved = session.state.resolved_list
+    if not resolved or not resolved.items:
+        raise HTTPException(status_code=400, detail="Resolve a shop list first")
+    session.price_check_store_ids = list(body.store_ids)
+    try:
+        result = await price_check_for_items(
+            store_ids=body.store_ids,
+            items=list(resolved.items),
+            include_split=body.include_split,
+        )
+    except ValueError as exc:
+        raise HTTPException(status_code=400, detail=str(exc)) from exc
+    return result.model_dump(mode="json")
+
+
+@app.get("/api/price-check/selected-stores")
+async def price_check_selected_stores(session: AgentSession = Depends(get_session)):
+    return {"store_ids": list(session.price_check_store_ids)}
 
 
 # --- Cart ---

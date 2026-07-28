@@ -118,6 +118,60 @@ export interface CartResult {
   cart_line_count?: number | null;
 }
 
+export type StoreChain = "woolworths" | "paknsave" | "new_world" | "freshchoice";
+
+export interface StoreRef {
+  id: string;
+  chain: StoreChain;
+  name: string;
+  address?: string;
+  suburb?: string;
+  pricing_note?: string;
+}
+
+export interface PriceCheckLine {
+  ingredient: string;
+  quantity: number;
+  unit: string;
+  product_name: string;
+  sku: string;
+  unit_price: number;
+  line_total: number;
+  price_source: "live" | "estimate";
+  note: string;
+}
+
+export interface PriceCheckStoreBasket {
+  store: StoreRef;
+  total: number;
+  live_count: number;
+  estimate_count: number;
+  lines: PriceCheckLine[];
+  warning: string;
+}
+
+export interface PriceSplitAssignment {
+  ingredient: string;
+  store_id: string;
+  store_name: string;
+  chain: StoreChain;
+  line: PriceCheckLine;
+}
+
+export interface PriceSplitResult {
+  total: number;
+  savings_vs_cheapest_single_store: number;
+  estimate_count: number;
+  live_count: number;
+  assignments: PriceSplitAssignment[];
+  note: string;
+}
+
+export interface PriceCheckResult {
+  baskets: PriceCheckStoreBasket[];
+  split: PriceSplitResult | null;
+}
+
 export interface WoolworthsCookie {
   name: string;
   value: string;

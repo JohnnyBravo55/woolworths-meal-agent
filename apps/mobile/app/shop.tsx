@@ -8,6 +8,7 @@ import { Button } from "@/components/ui/Button";
 import { StepNavBar } from "@/components/StepNavBar";
 import { Card, CardBody, CardHeader, H2 } from "@/components/ui/Card";
 import { Badge } from "@/components/ui/Badge";
+import { PriceCheckPanel } from "@/components/PriceCheckPanel";
 import { theme } from "@/constants/theme";
 import { api } from "@/lib/api";
 import { useWizardNav } from "@/lib/useWizardNav";
@@ -168,6 +169,10 @@ export default function ShopScreen() {
           </CardBody>
         </Card>
       )}
+
+      <View style={{ marginTop: 16 }}>
+        <PriceCheckPanel />
+      </View>
 
       <StepNavBar position="bottom">{navButtons}</StepNavBar>
     </WizardShell>

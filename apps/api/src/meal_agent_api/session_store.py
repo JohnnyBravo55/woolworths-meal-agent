@@ -19,6 +19,7 @@ class AgentSession:
     budget_suggestions: list[BudgetSuggestion] = field(default_factory=list)
     last_cart_result: CartResult | None = None
     export_only: bool = False
+    price_check_store_ids: list[str] = field(default_factory=list)
 
     @property
     def state(self) -> ConversationState:

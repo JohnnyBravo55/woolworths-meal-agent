@@ -86,6 +86,18 @@ export async function approveShop() {
   return api.approveShop();
 }
 
+export async function searchStores(opts?: {
+  q?: string;
+  chain?: import("@meal-agent/app-core").StoreChain;
+  limit?: number;
+}) {
+  return api.searchStores(opts);
+}
+
+export async function runPriceCheck(opts: { store_ids: string[]; include_split?: boolean }) {
+  return api.runPriceCheck(opts);
+}
+
 export async function addToCart(opts: { allow_over_budget?: boolean; export_only?: boolean }) {
   return api.addToCart(opts);
 }
