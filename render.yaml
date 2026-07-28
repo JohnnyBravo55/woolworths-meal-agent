@@ -13,7 +13,8 @@ services:
       - key: OPENAI_MODEL
         value: gpt-4o-mini
       - key: MEAL_AGENT_ACCESS_CODE
-        value: usertest1
+        # Comma-separated allow-list: usertest1 … usertest50
+        value: usertest1,usertest2,usertest3,usertest4,usertest5,usertest6,usertest7,usertest8,usertest9,usertest10,usertest11,usertest12,usertest13,usertest14,usertest15,usertest16,usertest17,usertest18,usertest19,usertest20,usertest21,usertest22,usertest23,usertest24,usertest25,usertest26,usertest27,usertest28,usertest29,usertest30,usertest31,usertest32,usertest33,usertest34,usertest35,usertest36,usertest37,usertest38,usertest39,usertest40,usertest41,usertest42,usertest43,usertest44,usertest45,usertest46,usertest47,usertest48,usertest49,usertest50
       - key: MEAL_AGENT_CORS_ORIGINS
         sync: false
       - key: MEAL_AGENT_COOKIE_SECURE

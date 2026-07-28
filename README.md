@@ -130,7 +130,7 @@ tests/             # Unit + integration smoke tests
 | `OPENAI_MODEL` | Model id (default: `gpt-4o-mini`) |
 | `MEAL_AGENT_RELOAD` | Set to `1` to auto-reload API on code changes (off by default on Windows — reload hangs there) |
 | `EXPO_PUBLIC_API_URL` | API base URL for Expo app (e.g. `http://192.168.1.x:8000` on LAN) |
-| `MEAL_AGENT_ACCESS_CODE` | When set, API requires `X-Access-Code` (hosted testers use `usertest1`) |
+| `MEAL_AGENT_ACCESS_CODE` | When set, API requires `X-Access-Code` (comma-separated allow-list; hosted testers use `usertest1`–`usertest50`) |
 | `MEAL_AGENT_CORS_ORIGINS` | Extra allowed CORS origins (comma-separated), e.g. GitHub Pages URL |
 | `MEAL_AGENT_COOKIE_SECURE` | Set `1` on HTTPS hosts so session cookies use `Secure` + `SameSite=None` |
 | `NDA_SHEETS_WEBHOOK_URL` | Google Apps Script web app URL — appends NDA acceptances to your Sheet |
@@ -138,7 +138,7 @@ tests/             # Unit + integration smoke tests
 
 ## Hosted tester deploy (GitHub Pages + Render free)
 
-Share a public webpage + access code **`usertest1`**. The free Render API may sleep after ~15 minutes idle (first request can take 30–60s).
+Share a public webpage + access code **`usertest1`–`usertest50`**. The free Render API may sleep after ~15 minutes idle (first request can take 30–60s).
 
 ### 1. API on Render
 
@@ -146,7 +146,7 @@ Share a public webpage + access code **`usertest1`**. The free Render API may sl
 2. In [Render](https://render.com), create a **Web Service** from the repo (or use `render.yaml` Blueprint).
 3. Set env vars:
    - `OPENAI_API_KEY` — your key
-   - `MEAL_AGENT_ACCESS_CODE=usertest1`
+   - `MEAL_AGENT_ACCESS_CODE=usertest1,usertest2,…,usertest50` (see `render.yaml`)
    - `MEAL_AGENT_CORS_ORIGINS=https://<you>.github.io` (or `https://<you>.github.io/<repo>` for project Pages)
    - `MEAL_AGENT_COOKIE_SECURE=1`
    - `NDA_SHEETS_WEBHOOK_URL` — Google Apps Script web app URL (see below)
@@ -179,7 +179,7 @@ GitHub Pages requires a **public** repo on the free plan (the access code still 
 ### 3. Tester instructions
 
 1. Open the GitHub Pages URL.
-2. Enter access code **`usertest1`**.
+2. Enter an access code **`usertest1`–`usertest50`** (one per tester).
 3. Read the NDA, type your full legal name, tick **I Agree**, then **Accept & Begin Beta Test** (once per browser; name + time are appended to the owner’s Google Sheet).
 4. Complete preferences → chef → plan → recipes → shop list.
 5. Open the cart step to see **Fill shopping cart, coming soon** (Woolworths / FreshChoice / New World). Hosted builds do not connect a Woolworths login or add to trolley yet.

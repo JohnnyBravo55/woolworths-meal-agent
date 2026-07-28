@@ -4,6 +4,7 @@ from __future__ import annotations
 
 import os
 import secrets
+from collections.abc import Sequence
 
 from starlette.middleware.base import BaseHTTPMiddleware
 from starlette.requests import Request
@@ -24,20 +25,42 @@ _OPEN_PATHS = frozenset(
 )
 
 
+def required_access_codes() -> list[str] | None:
+    """Parse MEAL_AGENT_ACCESS_CODE as a comma-separated allow-list."""
+    raw = os.environ.get("MEAL_AGENT_ACCESS_CODE", "").strip()
+    if not raw:
+        return None
+    codes = [part.strip() for part in raw.split(",") if part.strip()]
+    return codes or None
+
+
+# Back-compat alias used by older call sites / docs.
 def required_access_code() -> str | None:
-    code = os.environ.get("MEAL_AGENT_ACCESS_CODE", "").strip()
-    return code or None
+    codes = required_access_codes()
+    if not codes:
+        return None
+    return codes[0]
 
 
-def access_code_ok(provided: str | None, expected: str) -> bool:
+def access_code_ok(provided: str | None, expected: str | Sequence[str]) -> bool:
     if not provided:
         return False
-    return secrets.compare_digest(provided.strip(), expected)
+    provided = provided.strip()
+    expected_codes = [expected] if isinstance(expected, str) else list(expected)
+    if not expected_codes:
+        return False
+
+    matched = False
+    for code in expected_codes:
+        # compare_digest requires equal length; keep scanning all codes.
+        if len(provided) == len(code) and secrets.compare_digest(provided, code):
+            matched = True
+    return matched
 
 
 class AccessCodeMiddleware(BaseHTTPMiddleware):
     async def dispatch(self, request: Request, call_next) -> Response:
-        expected = required_access_code()
+        expected = required_access_codes()
         if expected is None:
             return await call_next(request)
 
