@@ -25,7 +25,7 @@ _HEADERS = {
     "Referer": "https://www.woolworths.co.nz/",
 }
 
-_DATA_PATH = Path(__file__).with_name("data") / "woolworths_nz_stores.json"
+_DATA_PATH = Path(__file__).with_name("woolworths_nz_stores.json")
 
 
 def _slug(text: str) -> str:

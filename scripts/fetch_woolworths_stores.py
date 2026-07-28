@@ -7,7 +7,7 @@ from pathlib import Path
 
 import httpx
 
-OUT = Path(__file__).resolve().parents[1] / "packages/price_check/src/price_check/data/woolworths_nz_stores.json"
+OUT = Path(__file__).resolve().parents[1] / "packages/price_check/src/price_check/woolworths_nz_stores.json"
 
 QUERY = """
 [out:json][timeout:60];
