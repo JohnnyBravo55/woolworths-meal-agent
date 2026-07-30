@@ -3,6 +3,7 @@
 from __future__ import annotations
 
 import asyncio
+import re
 import time
 
 from price_check import foodstuffs, freshchoice, woolworths_public
@@ -10,6 +11,48 @@ from price_check.models import StoreChain, StoreRef
 
 _CACHE: dict[StoreChain, tuple[float, list[StoreRef]]] = {}
 _CACHE_TTL = 6 * 60 * 60
+
+# Weak locality words — useful with a city token, not alone.
+_WEAK_LOCALITY = frozenset({"central", "city", "north", "south", "east", "west", "upper", "lower"})
+_STOP_TOKENS = frozenset({"new", "zealand", "the", "and", "nz"})
+
+
+def _query_tokens(query: str) -> list[str]:
+    return [
+        t
+        for t in re.findall(r"[a-z0-9]+", query.lower())
+        if len(t) > 2 and t not in _STOP_TOKENS
+    ]
+
+
+def _store_haystack(store: StoreRef) -> str:
+    return f"{store.name} {store.address} {store.suburb} {store.chain.value.replace('_', ' ')}".lower()
+
+
+def _search_score(store: StoreRef, query: str) -> float:
+    """Higher is better. 0 = no match."""
+    q = query.strip().lower()
+    if not q:
+        return 1.0
+    hay = _store_haystack(store)
+    if q in hay:
+        return 100.0
+    tokens = _query_tokens(q)
+    if not tokens:
+        return 0.0
+    strong = [t for t in tokens if t not in _WEAK_LOCALITY]
+    weak = [t for t in tokens if t in _WEAK_LOCALITY]
+    if not strong:
+        # e.g. bare "central" — require full phrase already handled above
+        return 0.0
+    if not all(t in hay for t in strong):
+        return 0.0
+    score = 40.0 + 15.0 * len(strong)
+    score += 10.0 * sum(1 for t in weak if t in hay)
+    # Prefer non-synthetic Woolworths locality rows when a real suburb match exists.
+    if store.id.startswith("woolworths:local:"):
+        score -= 5.0
+    return score
 
 
 async def _load_chain(chain: StoreChain) -> list[StoreRef]:
@@ -44,14 +87,8 @@ async def search_stores(query: str = "", chain: StoreChain | None = None, *, lim
     stores = await all_stores(chains=chains)
     q = query.strip().lower()
     if q:
-        stores = [
-            s
-            for s in stores
-            if q in s.name.lower()
-            or q in s.address.lower()
-            or q in s.suburb.lower()
-            or q in s.chain.value.replace("_", " ")
-        ]
+        scored = [( _search_score(s, q), s) for s in stores]
+        stores = [s for score, s in sorted(scored, key=lambda x: -x[0]) if score > 0]
         # Woolworths online catalogue is nationwide — always offer a locality pick
         # when the typed suburb isn't in the static list.
         if chain in (None, StoreChain.WOOLWORTHS) and not any(
@@ -60,8 +97,8 @@ async def search_stores(query: str = "", chain: StoreChain | None = None, *, lim
             synthetic = woolworths_public.store_from_query(query)
             if synthetic:
                 stores = [synthetic, *stores]
-        elif chain == StoreChain.WOOLWORTHS and stores and not any(
-            q in s.suburb.lower() or q in s.name.lower() for s in stores
+        elif chain == StoreChain.WOOLWORTHS and not any(
+            not s.id.startswith("woolworths:local:") for s in stores if s.chain == StoreChain.WOOLWORTHS
         ):
             synthetic = woolworths_public.store_from_query(query)
             if synthetic and all(s.id != synthetic.id for s in stores):

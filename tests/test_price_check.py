@@ -91,6 +91,39 @@ def test_score_product_name_rejects_unrelated():
     assert score_product_name("milk", "Standard Milk") > 0
 
 
+def test_score_product_name_rejects_avocado_salad_kit():
+    assert score_product_name("avocado", "Taylor Farms Avocado Ranch Chopped Kit 350g") == 0.0
+    assert score_product_name("avocado", "Fresh Avocado Pre-Ripened") > 50
+
+
+def test_score_product_name_rejects_coconut_milk_for_milk():
+    assert score_product_name("milk", "Coconut Milk 400ml") == 0.0
+    assert score_product_name("milk", "Anchor Blue Milk 2L") > 50
+
+
+def test_score_product_name_rejects_broccoli_cheese_bites():
+    assert score_product_name("broccoli head", "Leader Vegatarian Broccoli & Cheese Bites 500g") == 0.0
+    assert score_product_name("broccoli head", "Fresh Broccoli Head") > 50
+
+
+def test_score_product_name_rejects_pork_blend_for_beef_mince():
+    assert score_product_name("beef mince", "Woolworths Pork & Beef Mince 300g") == 0.0
+    assert score_product_name("beef mince", "NZ Premium Beef Mince kg") > 50
+
+
+@pytest.mark.asyncio
+async def test_christchurch_central_search_finds_nearby_chains():
+    from price_check.directory import search_stores
+
+    stores = await search_stores("Christchurch Central", limit=20)
+    chains = {s.chain.value for s in stores}
+    assert "woolworths" in chains
+    assert "new_world" in chains
+    assert "paknsave" in chains
+    assert any("durham" in s.name.lower() for s in stores)
+    assert any("moorhouse" in s.name.lower() for s in stores)
+
+
 @pytest.mark.asyncio
 async def test_woolworths_suburb_search_finds_ferrymead():
     from price_check.directory import search_stores
