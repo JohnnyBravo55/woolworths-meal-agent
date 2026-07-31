@@ -7,7 +7,7 @@ from typing import Any
 
 import httpx
 
-from price_check.matching import pick_best_product
+from price_check.matching import pick_best_product, search_query_variants
 from price_check.models import PriceCheckLine, PriceSource, StoreChain, StoreRef
 
 _UA = (
@@ -175,18 +175,28 @@ async def match_line(store: StoreRef, ingredient: str, quantity: float, unit: st
     if store.chain not in _CHAIN_CONFIG:
         return None
     store_uuid = store.id.split(":", 1)[-1]
-    products = await search_products(store.chain, store_uuid, ingredient, limit=8)
-    candidates = [
-        {
-            "name": str(p.get("name") or p.get("displayName") or ""),
-            "brand": str(p.get("brand") or ""),
-            "sku": str(p.get("productId") or ""),
-            "price_cents": (p.get("singlePrice") or {}).get("price"),
-            "display": str(p.get("displayName") or ""),
-            "raw": p,
-        }
-        for p in products
-    ]
+    candidates: list[dict] = []
+    seen_skus: set[str] = set()
+    for query in search_query_variants(ingredient):
+        products = await search_products(store.chain, store_uuid, query, limit=8)
+        for p in products:
+            sku = str(p.get("productId") or "")
+            if sku and sku in seen_skus:
+                continue
+            if sku:
+                seen_skus.add(sku)
+            candidates.append(
+                {
+                    "name": str(p.get("name") or p.get("displayName") or ""),
+                    "brand": str(p.get("brand") or ""),
+                    "sku": sku,
+                    "price_cents": (p.get("singlePrice") or {}).get("price"),
+                    "display": str(p.get("displayName") or ""),
+                    "raw": p,
+                }
+            )
+        if pick_best_product(ingredient, candidates):
+            break
     best = pick_best_product(ingredient, candidates)
     if not best:
         return None

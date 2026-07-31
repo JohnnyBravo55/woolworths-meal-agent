@@ -10,7 +10,7 @@ from typing import Any
 
 import httpx
 
-from price_check.matching import pick_best_product
+from price_check.matching import pick_best_product, search_query_variants
 from price_check.models import PriceCheckLine, PriceSource, StoreChain, StoreRef
 
 _UA = (
@@ -155,7 +155,19 @@ async def search_products(query: str, *, limit: int = 8) -> list[dict[str, Any]]
 async def match_line(store: StoreRef, ingredient: str, quantity: float, unit: str) -> PriceCheckLine | None:
     if store.chain != StoreChain.WOOLWORTHS:
         return None
-    products = await search_products(ingredient, limit=8)
+    products: list[dict[str, Any]] = []
+    seen_skus: set[str] = set()
+    for query in search_query_variants(ingredient):
+        batch = await search_products(query, limit=8)
+        for item in batch:
+            sku = str(item.get("sku") or "")
+            if sku and sku in seen_skus:
+                continue
+            if sku:
+                seen_skus.add(sku)
+            products.append(item)
+        if pick_best_product(ingredient, products):
+            break
     best = pick_best_product(ingredient, products)
     if not best:
         return None

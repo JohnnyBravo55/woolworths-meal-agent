@@ -20,6 +20,9 @@ from price_check.models import (
 
 MatchFn = Callable[[StoreRef, GroceryLineItem], Awaitable[PriceCheckLine | None]]
 
+# Cap concurrent catalogue lookups across stores (avoids WW/Foodstuffs rate spikes).
+_MATCH_SEM = asyncio.Semaphore(8)
+
 
 def _estimate_line(item: GroceryLineItem, *, note: str) -> PriceCheckLine:
     """Prefer shop-list unit/line totals; fall back to heuristic estimate."""
@@ -48,6 +51,18 @@ def _estimate_line(item: GroceryLineItem, *, note: str) -> PriceCheckLine:
     )
 
 
+async def _match_one(
+    store: StoreRef,
+    item: GroceryLineItem,
+    match_fn: MatchFn,
+) -> PriceCheckLine | None | BaseException:
+    async with _MATCH_SEM:
+        try:
+            return await match_fn(store, item)
+        except Exception as exc:  # noqa: BLE001 — per-line fallback to estimate
+            return exc
+
+
 async def _basket_for_store(
     store: StoreRef,
     items: list[GroceryLineItem],
@@ -55,21 +70,23 @@ async def _basket_for_store(
 ) -> PriceCheckStoreBasket:
     lines: list[PriceCheckLine] = []
     warning = ""
-    try:
-        matched = await asyncio.gather(*(match_fn(store, item) for item in items))
-    except Exception as exc:  # noqa: BLE001 — surface as store warning + estimates
-        warning = f"Live pricing unavailable ({exc}). Using estimates."
-        matched = [None] * len(items)
+    matched = await asyncio.gather(*(_match_one(store, item, match_fn) for item in items))
+    errors = [m for m in matched if isinstance(m, BaseException)]
+    if errors and len(errors) == len(items):
+        warning = f"Live pricing unavailable ({errors[0]}). Using estimates."
+    elif errors:
+        warning = f"{len(errors)} live lookup(s) failed; those lines use estimates."
 
     for item, live in zip(items, matched, strict=True):
-        if live is not None and live.price_source == PriceSource.LIVE and live.line_total > 0:
+        if isinstance(live, BaseException):
+            note = "estimate — live pricing unavailable for this store"
+            lines.append(_estimate_line(item, note=note))
+        elif live is not None and live.price_source == PriceSource.LIVE and live.line_total > 0:
             lines.append(live)
         else:
             note = "estimate — not found at this store"
             if live is not None and live.note:
                 note = live.note
-            elif warning:
-                note = "estimate — live pricing unavailable for this store"
             lines.append(_estimate_line(item, note=note))
 
     live_count = sum(1 for line in lines if line.price_source == PriceSource.LIVE)

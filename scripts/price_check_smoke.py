@@ -1,9 +1,11 @@
 #!/usr/bin/env python3
 """Live smoke for multi-store price check against local meal-agent-api.
 
+Full flow: session → prefs → plan → approve → shop → price-check.
+
 Usage:
   python scripts/price_check_smoke.py
-  python scripts/price_check_smoke.py --preset chch-central
+  python scripts/price_check_smoke.py --preset chch-central --runs 5
   python scripts/price_check_smoke.py --store-ids woolworths:christchurch,paknsave:...
 """
 
@@ -17,8 +19,22 @@ from pathlib import Path
 import httpx
 
 ROOT = Path(__file__).resolve().parents[1]
+if str(ROOT / "packages" / "price_check" / "src") not in sys.path:
+    sys.path.insert(0, str(ROOT / "packages" / "price_check" / "src"))
+
+from price_check.matching import score_product_name  # noqa: E402
+
 DEFAULT_BASE = "http://127.0.0.1:8000"
 DEFAULT_PREFS = ROOT / "profiles" / "web_smoke_prefs.json"
+
+CHEF_ORDER = [
+    "basic_sam",
+    "premium_elena",
+    "premium_kenji",
+    "premium_moana",
+    "premium_alex",
+    "premium_amara",
+]
 
 # Imagine living in Christchurch Central — nearby branches with live catalogues.
 # FreshChoice City Market is nearby but estimate-only (Myfoodlink not wired).
@@ -34,6 +50,8 @@ SUSPECT_PRODUCT_HINTS: dict[str, tuple[str, ...]] = {
     "avocado": ("kit", "ranch", "salad", "dip", "guacamole", "oil"),
     "milk": ("coconut", "almond", "oat", "soy", "powder", "chocolate", "condensed"),
     "chicken breast": ("nugget", "tender", "crumb", "schnitzel", "pie", "stock"),
+    "chicken thighs": ("nugget", "tenderbasted", "crumb", "schnitzel", "pie", "stock"),
+    "chicken thigh": ("nugget", "tenderbasted", "crumb", "schnitzel", "pie", "stock"),
     "beef mince": ("pork", "chicken", "lamb", "sausage", "pie", "patty"),
     "broccoli head": ("bite", "bites", "cheese", "soup", "kit", "salad"),
     "broccoli": ("bite", "bites", "cheese", "soup", "kit", "salad"),
@@ -93,20 +111,180 @@ def _suspect_matches(result: dict) -> list[dict]:
             if line.get("price_source") != "live":
                 continue
             ing = str(line.get("ingredient") or "").lower()
-            prod = str(line.get("product_name") or "").lower()
-            hints = SUSPECT_PRODUCT_HINTS.get(ing) or SUSPECT_PRODUCT_HINTS.get(ing.rstrip("s"))
-            if not hints:
-                continue
-            if any(h in prod for h in hints):
+            prod = str(line.get("product_name") or "")
+            prod_l = prod.lower()
+            reasons: list[str] = []
+            if score_product_name(ing, prod) <= 0:
+                reasons.append("matcher_rejects")
+            hints = (
+                SUSPECT_PRODUCT_HINTS.get(ing)
+                or SUSPECT_PRODUCT_HINTS.get(ing.rstrip("s"))
+                or ()
+            )
+            if hints and any(h in prod_l for h in hints):
+                reasons.append("hint")
+            if reasons:
                 bad.append(
                     {
                         "store": store,
                         "ingredient": line.get("ingredient"),
                         "product": line.get("product_name"),
                         "price": line.get("unit_price"),
+                        "reasons": reasons,
                     }
                 )
     return bad
+
+
+def _basket_stats(result: dict) -> list[dict]:
+    rows: list[dict] = []
+    for b in result.get("baskets") or []:
+        store = b.get("store") or {}
+        live = int(b.get("live_count") or 0)
+        est = int(b.get("estimate_count") or 0)
+        n = live + est
+        rows.append(
+            {
+                "chain": store.get("chain") or "",
+                "name": store.get("name") or b.get("store_id") or "store",
+                "live": live,
+                "estimate": est,
+                "items": n,
+                "live_pct": round(100.0 * live / n, 1) if n else 0.0,
+                "estimate_pct": round(100.0 * est / n, 1) if n else 0.0,
+                "total": b.get("total"),
+            }
+        )
+    return rows
+
+
+def run_once(
+    *,
+    base_url: str,
+    prefs_path: Path,
+    suburb: str,
+    pick_ids: list[str],
+    chef_id: str,
+    run_index: int,
+    out_dir: Path,
+) -> dict:
+    prefs = json.loads(prefs_path.read_text(encoding="utf-8"))
+    answers = {k: v for k, v in prefs.items() if k != "name"}
+    answers["chef_id"] = chef_id
+
+    base = base_url.rstrip("/")
+    with httpx.Client(base_url=base, timeout=60.0) as client:
+        print(f"\n===== RUN {run_index:03d} chef={chef_id} =====")
+        health = client.get("/api/health")
+        health.raise_for_status()
+
+        start = client.post("/api/session/start")
+        start.raise_for_status()
+        sid = start.json()["session_id"]
+        client.headers["X-Session-Id"] = sid
+        print(f"  session {sid[:8]}...")
+
+        stores_res = client.get("/api/stores/search", params={"q": suburb, "limit": 20})
+        stores_res.raise_for_status()
+        stores = stores_res.json().get("stores") or []
+        print(f"  store search {suburb!r}: {len(stores)} hit(s)")
+
+        ids = list(pick_ids)
+        if not ids:
+            by_chain: dict[str, dict] = {}
+            for s in stores:
+                by_chain.setdefault(str(s.get("chain")), s)
+            for chain in ("woolworths", "paknsave", "new_world", "freshchoice"):
+                if chain in by_chain and len(ids) < 4:
+                    ids.append(by_chain[chain]["id"])
+            if not ids and stores:
+                ids = [stores[0]["id"]]
+
+        print(f"  stores: {', '.join(ids)}")
+        print("  save profile ...")
+        client.post("/api/profile", json=answers).raise_for_status()
+
+        print("  generate plan ...")
+        plan_done = _sse_complete(client, "POST", "/api/plan/generate", timeout=300.0)
+        meals = (plan_done.get("meal_plan") or {}).get("meals") or []
+        print(f"  plan meals={len(meals)}")
+
+        print("  approve plan ...")
+        client.post("/api/plan/approve").raise_for_status()
+
+        print("  resolve shop ...")
+        shop_done = _sse_complete(client, "POST", "/api/shop/resolve", timeout=300.0)
+        resolved = shop_done.get("resolved_list") or {}
+        items = resolved.get("items") or []
+        print(f"  shop items={len(items)} total=${resolved.get('total')}")
+        if not items:
+            raise RuntimeError("empty shop list")
+
+        print("  price-check ...")
+        pc = client.post(
+            "/api/price-check",
+            json={"store_ids": ids, "include_split": True},
+            timeout=240.0,
+        )
+        if pc.status_code >= 400:
+            raise RuntimeError(f"price-check {pc.status_code}: {pc.text[:800]}")
+        result = pc.json()
+
+    baskets = _basket_stats(result)
+    suspects = _suspect_matches(result)
+    live_total = sum(b["live"] for b in baskets)
+    est_total = sum(b["estimate"] for b in baskets)
+    split = result.get("split") or {}
+
+    for b in baskets:
+        print(
+            f"    [{b['chain']}] {b['name']}: "
+            f"live={b['live']}/{b['items']} ({b['live_pct']} pct) "
+            f"est={b['estimate']}/{b['items']} ({b['estimate_pct']} pct) "
+            f"total=${b['total']}"
+        )
+    if split:
+        print(
+            f"  split total=${split.get('total')} "
+            f"savings=${split.get('savings_vs_cheapest_single_store')}"
+        )
+
+    status = "PASS"
+    if live_total < 1:
+        status = "FAIL_NO_LIVE"
+    elif suspects:
+        status = "FAIL_SUSPECT"
+        print(f"  SUSPECTS ({len(suspects)}):")
+        for s in suspects[:20]:
+            print(
+                f"    - {s['store']}: {s['ingredient']} -> {s['product']} "
+                f"({','.join(s.get('reasons') or [])})"
+            )
+
+    summary = {
+        "run_index": run_index,
+        "chef_id": chef_id,
+        "session_id": sid,
+        "status": status,
+        "shop_items": len(items),
+        "shop_total": resolved.get("total"),
+        "store_ids": ids,
+        "baskets": baskets,
+        "live_total": live_total,
+        "estimate_total": est_total,
+        "suspects": suspects,
+        "split_total": split.get("total"),
+        "split_savings": split.get("savings_vs_cheapest_single_store"),
+    }
+
+    out_dir.mkdir(parents=True, exist_ok=True)
+    (out_dir / "summary.json").write_text(json.dumps(summary, indent=2) + "\n", encoding="utf-8")
+    (out_dir / "price_check.json").write_text(json.dumps(result, indent=2) + "\n", encoding="utf-8")
+    (out_dir / "resolved_list.json").write_text(
+        json.dumps(resolved, indent=2) + "\n", encoding="utf-8"
+    )
+    print(f"  {status} -> {out_dir}")
+    return summary
 
 
 def main() -> int:
@@ -125,11 +303,14 @@ def main() -> int:
         default="",
         help="Comma-separated store ids (overrides preset)",
     )
+    parser.add_argument("--runs", type=int, default=1, help="Number of full E2E runs")
+    parser.add_argument("--start-index", type=int, default=1, help="First run index")
+    parser.add_argument(
+        "--chef",
+        default="",
+        help="Pin one chef for all runs (default: rotate via CHEF_ORDER)",
+    )
     args = parser.parse_args()
-
-    prefs = json.loads(args.prefs.read_text(encoding="utf-8"))
-    answers = {k: v for k, v in prefs.items() if k != "name"}
-    answers.setdefault("chef_id", "basic_sam")
 
     if args.store_ids.strip():
         pick_ids = [s.strip() for s in args.store_ids.split(",") if s.strip()]
@@ -138,128 +319,70 @@ def main() -> int:
     else:
         pick_ids = []
 
-    base = args.base_url.rstrip("/")
-    with httpx.Client(base_url=base, timeout=60.0) as client:
-        print(f"Health {base}/api/health ...")
-        health = client.get("/api/health")
-        health.raise_for_status()
-        print("  ok", health.json())
+    summaries: list[dict] = []
+    hard_fail = False
+    for i in range(args.runs):
+        run_index = args.start_index + i
+        chef_id = args.chef or CHEF_ORDER[(run_index - 1) % len(CHEF_ORDER)]
+        out_dir = ROOT / "output" / "price-check-smoke" / f"run-{run_index:03d}-{chef_id}"
+        try:
+            summary = run_once(
+                base_url=args.base_url,
+                prefs_path=args.prefs,
+                suburb=args.suburb,
+                pick_ids=pick_ids,
+                chef_id=chef_id,
+                run_index=run_index,
+                out_dir=out_dir,
+            )
+        except Exception as exc:  # noqa: BLE001 — smoke harness
+            print(f"  HARD FAIL: {exc}", file=sys.stderr)
+            summary = {
+                "run_index": run_index,
+                "chef_id": chef_id,
+                "status": "FAIL_HARD",
+                "error": str(exc),
+                "baskets": [],
+                "suspects": [],
+            }
+            hard_fail = True
+        summaries.append(summary)
+        if summary.get("status") == "FAIL_HARD":
+            break
 
-        print("Start session ...")
-        start = client.post("/api/session/start")
-        start.raise_for_status()
-        sid = start.json()["session_id"]
-        client.headers["X-Session-Id"] = sid
-        print(f"  session {sid[:8]}...")
+    report_path = ROOT / "output" / "price-check-smoke" / "loop-summary.json"
+    report_path.parent.mkdir(parents=True, exist_ok=True)
+    report_path.write_text(json.dumps({"runs": summaries}, indent=2) + "\n", encoding="utf-8")
 
-        print(f"Store search q={args.suburb!r} ...")
-        stores_res = client.get("/api/stores/search", params={"q": args.suburb, "limit": 20})
-        stores_res.raise_for_status()
-        stores = stores_res.json().get("stores") or []
-        print(f"  found {len(stores)} store(s) near suburb")
-        for s in stores[:10]:
-            print(f"    - {s.get('chain')}: {s.get('name')} ({s.get('id')})")
-
-        if not pick_ids:
-            by_chain: dict[str, dict] = {}
-            for s in stores:
-                by_chain.setdefault(str(s.get("chain")), s)
-            for chain in ("woolworths", "paknsave", "new_world", "freshchoice"):
-                if chain in by_chain and len(pick_ids) < 4:
-                    pick_ids.append(by_chain[chain]["id"])
-            if not pick_ids and stores:
-                pick_ids = [stores[0]["id"]]
-
-        print(f"Using {len(pick_ids)} store(s):")
-        for sid_pick in pick_ids:
-            print(f"    - {sid_pick}")
-
-        print("Save profile ...")
-        client.post("/api/profile", json=answers).raise_for_status()
-
-        print("Generate meal plan (may take a minute) ...")
-        plan_done = _sse_complete(client, "POST", "/api/plan/generate", timeout=300.0)
-        meals = (plan_done.get("meal_plan") or {}).get("meals") or []
-        print(f"  plan meals={len(meals)}")
-
-        print("Approve plan ...")
-        client.post("/api/plan/approve").raise_for_status()
-
-        print("Resolve shop list (may take a minute) ...")
-        shop_done = _sse_complete(client, "POST", "/api/shop/resolve", timeout=300.0)
-        resolved = shop_done.get("resolved_list") or {}
-        items = resolved.get("items") or []
-        print(f"  shop items={len(items)} total=${resolved.get('total')}")
-        if not items:
-            print("FAIL: empty shop list", file=sys.stderr)
-            return 1
-
-        print("POST /api/price-check ...")
-        pc = client.post(
-            "/api/price-check",
-            json={"store_ids": pick_ids, "include_split": True},
-            timeout=240.0,
-        )
-        if pc.status_code >= 400:
-            print(f"FAIL: price-check {pc.status_code} {pc.text[:800]}", file=sys.stderr)
-            return 1
-        result = pc.json()
-        baskets = result.get("baskets") or []
-        print(f"  baskets={len(baskets)}")
-        live_total = 0
-        est_total = 0
+    print("\n===== LOOP SUMMARY =====")
+    print(
+        f"{'run':>4}  {'chef':<16}  {'status':<14}  "
+        f"{'items':>5}  store live% (est%)"
+    )
+    for s in summaries:
+        baskets = s.get("baskets") or []
+        parts = []
         for b in baskets:
-            live = int(b.get("live_count") or 0)
-            est = int(b.get("estimate_count") or 0)
-            live_total += live
-            est_total += est
-            store_label = (
-                (b.get("store") or {}).get("name")
-                or b.get("store_name")
-                or b.get("store_id")
-                or "store"
-            )
-            chain = (b.get("store") or {}).get("chain") or ""
-            print(
-                f"    [{chain}] {store_label}: total=${b.get('total')} "
-                f"live={live} estimate={est}"
-            )
-            for line in (b.get("lines") or [])[:4]:
-                src = line.get("price_source")
-                print(
-                    f"      [{src}] {line.get('ingredient')} -> "
-                    f"{line.get('product_name')} ${line.get('unit_price')}"
-                )
-        split = result.get("split")
-        if split:
-            print(
-                f"  split total=${split.get('total')} "
-                f"savings=${split.get('savings_vs_cheapest_single_store')}"
-            )
+            label = (b.get("chain") or "?")[:3]
+            parts.append(f"{label}:{b.get('live_pct')}%({b.get('estimate_pct')}%)")
+        print(
+            f"{s.get('run_index', 0):>4}  {str(s.get('chef_id') or ''):<16}  "
+            f"{str(s.get('status') or ''):<14}  "
+            f"{int(s.get('shop_items') or 0):>5}  "
+            + ("  ".join(parts) if parts else str(s.get('error') or ''))
+        )
+        for sus in (s.get("suspects") or [])[:8]:
+            print(f"       suspect: {sus.get('ingredient')} -> {sus.get('product')}")
 
-        suspects = _suspect_matches(result)
-        out = ROOT / "output" / "price-check-smoke.json"
-        out.parent.mkdir(parents=True, exist_ok=True)
-        payload = {
-            "store_ids": pick_ids,
-            "suburb": args.suburb,
-            "suspects": suspects,
-            "result": result,
-        }
-        out.write_text(json.dumps(payload, indent=2) + "\n", encoding="utf-8")
+    print(f"Wrote {report_path}")
 
-        if live_total < 1:
-            print("FAIL: no live prices matched", file=sys.stderr)
-            return 1
-        if suspects:
-            print(f"FAIL: {len(suspects)} suspect wrong-product match(es):", file=sys.stderr)
-            for s in suspects[:20]:
-                print(f"  - {s['store']}: {s['ingredient']} -> {s['product']}", file=sys.stderr)
-            print(f"Wrote {out}")
-            return 2
-
-        print(f"PASS: live prices ok (live={live_total}, estimate={est_total}) -> {out}")
-        return 0
+    if hard_fail or any(s.get("status") == "FAIL_HARD" for s in summaries):
+        return 1
+    if any(s.get("status") == "FAIL_SUSPECT" for s in summaries):
+        return 2
+    if any(s.get("status") == "FAIL_NO_LIVE" for s in summaries):
+        return 1
+    return 0
 
 
 if __name__ == "__main__":

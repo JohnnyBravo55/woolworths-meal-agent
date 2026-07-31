@@ -111,6 +111,37 @@ def test_score_product_name_rejects_pork_blend_for_beef_mince():
     assert score_product_name("beef mince", "NZ Premium Beef Mince kg") > 50
 
 
+def test_score_product_name_accepts_courgette_for_zucchini():
+    assert score_product_name("zucchini", "Imported Courgettes") > 50
+    assert score_product_name("zucchini", "Organic Pumpkin Kumara & Courgette With Quinoa 6+ Months Pureed") == 0.0
+
+
+def test_score_product_name_allows_salad_when_ingredient_is_salad_greens():
+    assert score_product_name("mixed salad greens", "Mixed Leaf Salad") > 50
+    assert score_product_name("mixed salad greens", "Mesclun Salad") > 50
+    assert score_product_name("mixed salad greens", "Crispy Salad With Kiwi Dressing") == 0.0
+
+
+def test_search_query_variants_include_produce_aliases():
+    from price_check.matching import search_query_variants
+
+    broccoli = search_query_variants("broccoli head")
+    assert "broccoli" in [q.lower() for q in broccoli]
+    zucchini = search_query_variants("zucchini")
+    assert any("courgette" in q.lower() for q in zucchini)
+
+
+def test_score_product_name_accepts_egg_noodles():
+    assert score_product_name("egg noodles", "High Mark Egg Noodles Round") > 50
+    assert score_product_name("egg", "Egg Noodles Round") == 0.0
+
+
+def test_score_product_name_rejects_snap_pea_snacks_and_mixes():
+    assert score_product_name("snap peas", "Harvest Snaps Original Salted Baked Pea Crisps") == 0.0
+    assert score_product_name("snap peas", "Steam Fresh Green Beans Broccoli & Sugarsnap Peas Vege Mix") == 0.0
+    assert score_product_name("snap peas", "Sugar Snap Peas") > 50
+
+
 @pytest.mark.asyncio
 async def test_christchurch_central_search_finds_nearby_chains():
     from price_check.directory import search_stores
