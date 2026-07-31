@@ -76,6 +76,11 @@ _JUNK_TOKENS = frozenset(
         "pureed",
         "months",
         "baby",
+        "pickle",
+        "pickled",
+        "relish",
+        "chutney",
+        "scone",
     }
 )
 
@@ -156,6 +161,9 @@ _SEARCH_VARIANTS: dict[str, tuple[str, ...]] = {
     "fish fillets": ("white fish fillets", "fish fillet"),
     "snap peas": ("sugar snap peas", "sugarsnap peas", "snow peas"),
     "avocado": ("fresh avocado", "avocados"),
+    "potatoes": ("potato", "agria potatoes", "washed potatoes"),
+    "mixed herbs": ("mixed herb", "dried mixed herbs", "italian herbs"),
+    "tortilla wraps": ("tortilla wrap", "tortillas", "soft tortillas", "wraps"),
     "stir fry vegetables": (
         "stir fry veg",
         "mixed vegetables",
@@ -212,10 +220,13 @@ _INGREDIENT_REJECT: dict[str, tuple[str, ...]] = {
     "flour": ("tortilla", "wrap", "self raising mix"),
     "tomato": ("sauce", "paste", "ketchup", "soup", "juice", "passata"),
     "potato": ("chip", "crisp", "mash mix", "waffle"),
-    "cheese": ("cake", "ball", "sauce", "spread", "roll", "stick", "sticks"),
-    "honey": ("cashew", "roasted", "mustard", "nut", "nuts", "cereal"),
+    "cheese": ("cake", "ball", "sauce", "spread", "roll", "stick", "sticks", "scone"),
+    "honey": ("cashew", "roasted", "mustard", "dijon", "nut", "nuts", "cereal", "snippet"),
     "salsa": ("chip", "crisp", "grainwave", "sunbite", "twistie", "cracker"),
     "stir fry vegetables": ("sauce", "noodle", "seasoning", "kit"),
+    "zucchini": ("pickle", "pickled", "relish", "chutney", "puree", "pureed", "months", "baby", "quinoa"),
+    "potato": ("chip", "crisp", "mash mix", "waffle", "croquette"),
+    "potatoes": ("chip", "crisp", "mash mix", "waffle", "croquette"),
 }
 
 
