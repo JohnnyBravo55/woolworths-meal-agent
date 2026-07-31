@@ -156,7 +156,13 @@ _SEARCH_VARIANTS: dict[str, tuple[str, ...]] = {
     "fish fillets": ("white fish fillets", "fish fillet"),
     "snap peas": ("sugar snap peas", "sugarsnap peas", "snow peas"),
     "avocado": ("fresh avocado", "avocados"),
-    "stir fry vegetables": ("stir fry veg", "mixed vegetables"),
+    "stir fry vegetables": (
+        "stir fry veg",
+        "mixed vegetables",
+        "stirfry vegetables",
+        "asian stir fry",
+        "frozen stir fry",
+    ),
     "vegetable stock": ("vegetable stock liquid", "vegetable stock powder"),
     "wholegrain wraps": ("wholemeal wraps", "whole grain wraps"),
     "wholegrain bread": ("wholemeal bread", "whole grain bread"),
@@ -206,7 +212,10 @@ _INGREDIENT_REJECT: dict[str, tuple[str, ...]] = {
     "flour": ("tortilla", "wrap", "self raising mix"),
     "tomato": ("sauce", "paste", "ketchup", "soup", "juice", "passata"),
     "potato": ("chip", "crisp", "mash mix", "waffle"),
-    "cheese": ("cake", "ball", "sauce", "spread"),
+    "cheese": ("cake", "ball", "sauce", "spread", "roll", "stick", "sticks"),
+    "honey": ("cashew", "roasted", "mustard", "nut", "nuts", "cereal"),
+    "salsa": ("chip", "crisp", "grainwave", "sunbite", "twistie", "cracker"),
+    "stir fry vegetables": ("sauce", "noodle", "seasoning", "kit"),
 }
 
 

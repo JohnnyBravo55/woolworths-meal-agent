@@ -62,7 +62,7 @@ async def _load_chain(chain: StoreChain) -> list[StoreRef]:
     if chain == StoreChain.WOOLWORTHS:
         stores = woolworths_public.list_stores()
     elif chain == StoreChain.FRESHCHOICE:
-        stores = freshchoice.list_stores()
+        stores = await freshchoice.list_stores_async()
     elif chain in (StoreChain.NEW_WORLD, StoreChain.PAKNSAVE):
         stores = await foodstuffs.list_stores(chain)
     else:

@@ -37,12 +37,11 @@ CHEF_ORDER = [
 ]
 
 # Imagine living in Christchurch Central — nearby branches with live catalogues.
-# FreshChoice City Market is nearby but estimate-only (Myfoodlink not wired).
 CHCH_CENTRAL_STORES = [
     "woolworths:christchurch",  # Woolworths Christchurch City
     "new_world:c1aaac72-38c0-4cc0-ad05-f241047d88c5",  # New World Durham Street
     "paknsave:61dd754e-8525-4b9e-9e08-173389eea8a8",  # PAK'nSAVE Moorhouse (Sydenham)
-    "new_world:fc91d59f-6ab5-4447-8737-125e09e8e50e",  # New World Ferry Road
+    "freshchoice:citymarket",  # FreshChoice Christchurch City Market
 ]
 
 # Ingredient substring / product junk that usually means a wrong match.

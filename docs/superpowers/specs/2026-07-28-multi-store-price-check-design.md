@@ -44,7 +44,7 @@ On the shop list step, users can optionally run a **login-free price check** acr
 
 ## FreshChoice note
 
-FreshChoice online uses Myfoodlink (not Foodstuffs Edge). V1 includes FreshChoice in the picker; if live search is unavailable for a branch, all lines use estimate fallback with an explicit note.
+FreshChoice online uses Myfoodlink (not Foodstuffs Edge). Live prices come from each store’s guest shopfront (`{slug}.store.freshchoice.co.nz/search?q=…`) via HTML product cards — same login-free model as the other chains. If a store/search fails, lines fall back to estimates with an explicit note.
 
 ## Error handling
 

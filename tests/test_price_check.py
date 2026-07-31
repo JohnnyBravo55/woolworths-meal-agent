@@ -142,6 +142,41 @@ def test_score_product_name_rejects_snap_pea_snacks_and_mixes():
     assert score_product_name("snap peas", "Sugar Snap Peas") > 50
 
 
+def test_score_product_name_rejects_honey_nuts_and_cheese_roll():
+    assert score_product_name("honey", "Cashews Honey Roasted") == 0.0
+    assert score_product_name("honey", "Airborne Multifloral Honey 500g") > 50
+    assert score_product_name("cheese", "Cheese Roll") == 0.0
+    assert score_product_name("salsa", "Sunbites Grainwaves Salsa 140g") == 0.0
+
+
+def test_freshchoice_parse_products_from_search_html():
+    from price_check.freshchoice import _parse_products
+
+    sample = """
+    <div class="talker__name talker__section" title="WW Milk Standard 2L">
+    <span class="talker__product-name">WW Milk Standard</span>
+    <span class="weak size talker__name__size">2L</span>
+    </div>
+    <strong class="price__sell" title="">$5.09</strong>
+    <form class="item-quantity-form" id="new_order_line_for_5817d6c6e1272f60920070d5">
+    <div class="talker__name talker__section" title="Whittaker&#39;s Chocolate Block Creamy Milk 250g">
+    <span class="talker__product-name">Whittaker&#39;s Chocolate Block Creamy Milk</span>
+    <span class="weak size talker__name__size">250g</span>
+    </div>
+    <strong class="price__sell" title="">$7.49</strong>
+    <form id="new_order_line_for_5817d9aee1272f60920204e0">
+    """
+    products = _parse_products(sample)
+    assert len(products) >= 2
+    milk = next(p for p in products if "Milk Standard" in p["name"])
+    assert milk["unit_price"] == 5.09
+    assert milk["size"] == "2L"
+    assert milk["sku"] == "5817d6c6e1272f60920070d5"
+    choc = next(p for p in products if "Whittaker" in p["name"])
+    assert "Creamy Milk" in choc["name"]
+    assert choc["unit_price"] == 7.49
+
+
 @pytest.mark.asyncio
 async def test_christchurch_central_search_finds_nearby_chains():
     from price_check.directory import search_stores
