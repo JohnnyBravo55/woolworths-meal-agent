@@ -2,6 +2,7 @@
 
 from __future__ import annotations
 
+import asyncio
 import json
 import re
 from functools import lru_cache
@@ -19,13 +20,21 @@ _UA = (
 )
 _HEADERS = {
     "User-Agent": _UA,
-    "Accept": "application/json",
+    "Accept": "application/json, text/plain, */*",
+    "Accept-Language": "en-NZ,en;q=0.9",
     "x-requested-with": "OnlineShopping_Web",
     "Origin": "https://www.woolworths.co.nz",
     "Referer": "https://www.woolworths.co.nz/",
 }
+_HOME = "https://www.woolworths.co.nz/"
+_SEARCH = "https://www.woolworths.co.nz/api/v1/products"
 
 _DATA_PATH = Path(__file__).with_name("woolworths_nz_stores.json")
+
+# Cap concurrent WW catalogue calls — cloud IPs get throttled when blasted.
+_WW_SEM = asyncio.Semaphore(3)
+_client_lock = asyncio.Lock()
+_shared_client: httpx.AsyncClient | None = None
 
 
 def _slug(text: str) -> str:
@@ -73,7 +82,6 @@ def list_stores() -> list[StoreRef]:
                 pricing_note="Online catalogue prices",
             )
         )
-    # Deduplicate by id, keep first
     seen: set[str] = set()
     unique: list[StoreRef] = []
     for store in stores:
@@ -119,20 +127,70 @@ def resolve_store_id(store_id: str) -> StoreRef | None:
     return None
 
 
+async def _get_client() -> httpx.AsyncClient:
+    global _shared_client
+    async with _client_lock:
+        if _shared_client is None or _shared_client.is_closed:
+            _shared_client = httpx.AsyncClient(
+                timeout=30.0,
+                follow_redirects=True,
+                headers=_HEADERS,
+            )
+            # Warm cookies / edge session — helps from cloud IPs.
+            try:
+                await _shared_client.get(_HOME, headers={**_HEADERS, "Accept": "text/html,*/*"})
+            except httpx.HTTPError:
+                pass
+        return _shared_client
+
+
 async def search_products(query: str, *, limit: int = 8) -> list[dict[str, Any]]:
-    async with httpx.AsyncClient(timeout=25.0, follow_redirects=True) as client:
-        resp = await client.get(
-            "https://www.woolworths.co.nz/api/v1/products",
-            params={
-                "target": "search",
-                "search": query,
-                "inStockProductsOnly": "false",
-                "size": str(min(max(1, limit), 48)),
-            },
-            headers=_HEADERS,
-        )
-        resp.raise_for_status()
-        items = resp.json().get("products", {}).get("items", [])
+    q = query.strip()
+    if not q:
+        return []
+    params = {
+        "target": "search",
+        "search": q,
+        "inStockProductsOnly": "false",
+        "size": str(min(max(1, limit), 48)),
+    }
+    last_exc: Exception | None = None
+    async with _WW_SEM:
+        client = await _get_client()
+        for attempt in range(3):
+            try:
+                resp = await client.get(_SEARCH, params=params, headers=_HEADERS)
+                if resp.status_code in (403, 429, 502, 503):
+                    last_exc = httpx.HTTPStatusError(
+                        f"Woolworths search HTTP {resp.status_code}",
+                        request=resp.request,
+                        response=resp,
+                    )
+                    # Re-warm and retry
+                    try:
+                        await client.get(_HOME, headers={**_HEADERS, "Accept": "text/html,*/*"})
+                    except httpx.HTTPError:
+                        pass
+                    await asyncio.sleep(0.4 * (attempt + 1))
+                    continue
+                resp.raise_for_status()
+                try:
+                    payload = resp.json()
+                except json.JSONDecodeError as exc:
+                    raise RuntimeError(
+                        f"Woolworths search returned non-JSON ({resp.status_code}): "
+                        f"{resp.text[:160]!r}"
+                    ) from exc
+                items = (payload.get("products") or {}).get("items") or []
+                break
+            except httpx.HTTPError as exc:
+                last_exc = exc
+                await asyncio.sleep(0.4 * (attempt + 1))
+                continue
+        else:
+            assert last_exc is not None
+            raise last_exc
+
     out: list[dict[str, Any]] = []
     for item in items:
         if item.get("type") != "Product":

@@ -73,9 +73,10 @@ async def _basket_for_store(
     matched = await asyncio.gather(*(_match_one(store, item, match_fn) for item in items))
     errors = [m for m in matched if isinstance(m, BaseException)]
     if errors and len(errors) == len(items):
-        warning = f"Live pricing unavailable ({errors[0]}). Using estimates."
+        warning = f"Live pricing unavailable ({type(errors[0]).__name__}: {errors[0]!r}). Using estimates."
     elif errors:
-        warning = f"{len(errors)} live lookup(s) failed; those lines use estimates."
+        sample = f"{type(errors[0]).__name__}: {errors[0]!r}"
+        warning = f"{len(errors)} live lookup(s) failed ({sample}); those lines use estimates."
 
     for item, live in zip(items, matched, strict=True):
         if isinstance(live, BaseException):
