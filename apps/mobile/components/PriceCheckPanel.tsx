@@ -194,6 +194,9 @@ export function PriceCheckPanel() {
                         <Text style={styles.muted}>
                           {basket.live_count} live · {basket.estimate_count} estimate
                         </Text>
+                        {basket.warning ? (
+                          <Text style={styles.warn}>{basket.warning}</Text>
+                        ) : null}
                       </View>
                       <Text style={styles.total}>${basket.total.toFixed(2)}</Text>
                     </Pressable>
@@ -299,6 +302,7 @@ const styles = StyleSheet.create({
   storeRowOn: { backgroundColor: "#f0fdf4" },
   storeName: { fontWeight: "700", color: theme.text, fontSize: 14 },
   muted: { color: theme.textMuted, fontSize: 12, marginTop: 2 },
+  warn: { color: "#9a3412", fontSize: 11, marginTop: 4, lineHeight: 15 },
   splitToggle: { marginBottom: 10 },
   error: { color: "#b91c1c", marginTop: 8, fontSize: 13 },
   resultCard: {

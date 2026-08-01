@@ -65,7 +65,29 @@ def main() -> int:
             if cont.count() == 0:
                 cont = page.get_by_role("button", name="Continue")
             cont.first.click()
-            page.wait_for_timeout(1500)
+            page.wait_for_timeout(2500)
+
+        # NDA gate (hosted beta)
+        nda_name = page.get_by_test_id("nda-full-name")
+        if nda_name.count() == 0:
+            nda_name = page.get_by_placeholder("Full legal name")
+        if nda_name.count() > 0 and nda_name.first.is_visible():
+            print("Accepting NDA…")
+            nda_name.first.fill("Hosted Price Check Tester")
+            agree = page.get_by_test_id("nda-agree")
+            if agree.count() > 0:
+                agree.first.check()
+            else:
+                checkbox = page.get_by_role("checkbox")
+                if checkbox.count() > 0:
+                    checkbox.first.check()
+            accept = page.get_by_test_id("nda-accept")
+            if accept.count() == 0:
+                accept = page.get_by_role("button", name="Accept & Begin Beta Test")
+            if accept.count() == 0:
+                accept = page.get_by_role("button", name="Accept")
+            accept.first.click()
+            page.wait_for_timeout(2000)
 
         # Preferences — fill suburb for Chch
         print("Preferences…")
@@ -83,7 +105,11 @@ def main() -> int:
 
         choose = page.get_by_test_id("prefs-continue")
         if choose.count() == 0:
+            choose = page.get_by_role("button", name="Continue to chef")
+        if choose.count() == 0:
             choose = page.get_by_role("button", name="Choose your chef")
+        if choose.count() == 0:
+            choose = page.get_by_text("Continue to chef", exact=False)
         choose.first.click()
 
         # Chef
