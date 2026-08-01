@@ -1,5 +1,5 @@
 #!/usr/bin/env python3
-"""API-only hosted price-check verification against Render."""
+"""API-only hosted price-check verification against Render (SSE)."""
 
 from __future__ import annotations
 
@@ -21,9 +21,16 @@ STORES = [
 OUT = ROOT / "output" / "hosted-api-price-check.json"
 
 
-def sse(client: httpx.Client, method: str, path: str, timeout: float = 300.0) -> dict:
+def sse(
+    client: httpx.Client,
+    method: str,
+    path: str,
+    *,
+    timeout: float = 420.0,
+    json_body: dict | None = None,
+) -> dict:
     complete = None
-    with client.stream(method, path, timeout=timeout) as resp:
+    with client.stream(method, path, json=json_body, timeout=timeout) as resp:
         print(path, resp.status_code)
         resp.raise_for_status()
         event = "message"
@@ -33,7 +40,10 @@ def sse(client: httpx.Client, method: str, path: str, timeout: float = 300.0) ->
             if line == "":
                 if data:
                     payload = json.loads("\n".join(data))
-                    if event == "complete":
+                    if event == "status":
+                        msg = payload.get("message") if isinstance(payload, dict) else payload
+                        print(" ", msg)
+                    elif event == "complete":
                         complete = payload
                     elif event == "error":
                         raise RuntimeError(str(payload))
@@ -84,16 +94,13 @@ def main() -> int:
             return 1
 
         print("price-check...")
-        pc = client.post(
+        result = sse(
+            client,
+            "POST",
             "/api/price-check",
-            json={"store_ids": STORES, "include_split": True},
-            timeout=240.0,
+            json_body={"store_ids": STORES, "include_split": True},
+            timeout=420.0,
         )
-        print("pc", pc.status_code)
-        if pc.status_code >= 400:
-            print(pc.text[:1200], file=sys.stderr)
-            return 1
-        result = pc.json()
         OUT.parent.mkdir(parents=True, exist_ok=True)
         OUT.write_text(json.dumps(result, indent=2) + "\n", encoding="utf-8")
 
@@ -105,14 +112,18 @@ def main() -> int:
             tot = live + est
             pct = round(100 * live / tot, 1) if tot else 0
             note = str(s.get("pricing_note") or "")
+            warn = str(b.get("warning") or "")
             print(
                 f"[{s.get('chain')}] {s.get('name')}: live={live}/{tot} ({pct}%) "
-                f"est={est} note={note!r} warning={b.get('warning')!r}"
+                f"est={est} note={note!r} warning={warn!r}"
             )
             if "not wired" in note.lower():
                 issues.append(f"{s.get('name')}: still estimate-only ({note})")
-            if live < 1:
+            # WW from cloud IPs is often Akamai-blocked — estimates + warning is OK.
+            if live < 1 and s.get("chain") != "woolworths":
                 issues.append(f"{s.get('name')}: zero live matches")
+            if s.get("chain") == "woolworths" and live < 1 and "unavailable" not in warn.lower() and "blocked" not in warn.lower():
+                issues.append(f"Woolworths: zero live matches without catalogue-block warning")
             if s.get("chain") == "freshchoice" and pct < 40:
                 issues.append(f"FreshChoice live rate low: {pct}%")
 

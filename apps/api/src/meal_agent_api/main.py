@@ -1224,21 +1224,65 @@ async def price_check(
     body: PriceCheckRequestBody,
     session: AgentSession = Depends(get_session),
 ):
-    from price_check.service import price_check_for_items
+    """Stream price-check progress (SSE). JSON body in; SSE events out.
+
+    Events: ``status`` (per store), ``complete`` (full result), ``error``.
+    """
+    from price_check.service import finalize_price_check, iter_price_check_baskets
 
     resolved = session.state.resolved_list
     if not resolved or not resolved.items:
         raise HTTPException(status_code=400, detail="Resolve a shop list first")
     session.price_check_store_ids = list(body.store_ids)
-    try:
-        result = await price_check_for_items(
-            store_ids=body.store_ids,
-            items=list(resolved.items),
-            include_split=body.include_split,
-        )
-    except ValueError as exc:
-        raise HTTPException(status_code=400, detail=str(exc)) from exc
-    return result.model_dump(mode="json")
+    items = list(resolved.items)
+
+    async def stream():
+        try:
+            baskets = []
+            stores = []
+            async for resolved_stores, missing, basket, idx in iter_price_check_baskets(
+                store_ids=list(body.store_ids),
+                items=items,
+            ):
+                stores = resolved_stores
+                if basket is None:
+                    if missing:
+                        yield _sse_event(
+                            "status",
+                            {
+                                "message": f"Skipping unknown store(s): {', '.join(missing)}",
+                                "done": 0,
+                                "total": len(stores),
+                            },
+                        )
+                    yield _sse_event(
+                        "status",
+                        {
+                            "message": f"Checking prices at {len(stores)} store(s)…",
+                            "done": 0,
+                            "total": len(stores),
+                        },
+                    )
+                    continue
+                store = basket.store
+                yield _sse_event(
+                    "status",
+                    {
+                        "message": f"Matched {store.name}",
+                        "done": idx + 1,
+                        "total": len(stores),
+                        "store_id": store.id,
+                    },
+                )
+                baskets.append(basket)
+            result = finalize_price_check(baskets, include_split=body.include_split)
+            yield _sse_event("complete", result.model_dump(mode="json"))
+        except ValueError as exc:
+            yield _sse_event("error", {"message": str(exc)})
+        except Exception as exc:  # noqa: BLE001 — surface to client
+            yield _sse_event("error", {"message": str(exc)})
+
+    return _sse_response(stream())
 
 
 @app.get("/api/price-check/selected-stores")

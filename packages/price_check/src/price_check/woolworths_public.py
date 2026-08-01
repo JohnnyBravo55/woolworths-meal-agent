@@ -36,6 +36,41 @@ _WW_SEM = asyncio.Semaphore(3)
 _client_lock = asyncio.Lock()
 _shared_client: httpx.AsyncClient | None = None
 
+# Akamai often blocks datacenter IPs (e.g. Render). After a few hard failures,
+# stop retrying for this process so multi-store checks stay under gateway limits.
+_CIRCUIT_LOCK = asyncio.Lock()
+_circuit_open = False
+_circuit_failures = 0
+_CIRCUIT_THRESHOLD = 1
+
+
+class WoolworthsCatalogueUnavailable(RuntimeError):
+    """Raised when the public catalogue is blocked/unavailable from this host."""
+
+
+async def _trip_circuit(reason: str) -> None:
+    global _circuit_open, _circuit_failures
+    async with _CIRCUIT_LOCK:
+        _circuit_failures += 1
+        if _circuit_failures >= _CIRCUIT_THRESHOLD:
+            _circuit_open = True
+    raise WoolworthsCatalogueUnavailable(reason)
+
+
+async def _note_success() -> None:
+    global _circuit_open, _circuit_failures
+    async with _CIRCUIT_LOCK:
+        _circuit_failures = 0
+        _circuit_open = False
+
+
+def reset_circuit_for_tests() -> None:
+    """Test helper — clear process-wide circuit state."""
+    global _circuit_open, _circuit_failures, _shared_client
+    _circuit_open = False
+    _circuit_failures = 0
+    _shared_client = None
+
 
 def _slug(text: str) -> str:
     slug = re.sub(r"[^a-z0-9]+", "-", text.lower().strip()).strip("-")
@@ -148,6 +183,10 @@ async def search_products(query: str, *, limit: int = 8) -> list[dict[str, Any]]
     q = query.strip()
     if not q:
         return []
+    if _circuit_open:
+        raise WoolworthsCatalogueUnavailable(
+            "Woolworths catalogue blocked from this host (using estimates)"
+        )
     params = {
         "target": "search",
         "search": q,
@@ -157,39 +196,43 @@ async def search_products(query: str, *, limit: int = 8) -> list[dict[str, Any]]
     last_exc: Exception | None = None
     async with _WW_SEM:
         client = await _get_client()
-        for attempt in range(3):
+        for attempt in range(2):
             try:
                 resp = await client.get(_SEARCH, params=params, headers=_HEADERS)
-                if resp.status_code in (403, 429, 502, 503):
+                if resp.status_code in (403, 429):
+                    await _trip_circuit(f"Woolworths search HTTP {resp.status_code}")
+                if resp.status_code in (502, 503):
                     last_exc = httpx.HTTPStatusError(
                         f"Woolworths search HTTP {resp.status_code}",
                         request=resp.request,
                         response=resp,
                     )
-                    # Re-warm and retry
                     try:
                         await client.get(_HOME, headers={**_HEADERS, "Accept": "text/html,*/*"})
                     except httpx.HTTPError:
                         pass
-                    await asyncio.sleep(0.4 * (attempt + 1))
+                    await asyncio.sleep(0.35 * (attempt + 1))
                     continue
                 resp.raise_for_status()
                 try:
                     payload = resp.json()
-                except json.JSONDecodeError as exc:
-                    raise RuntimeError(
+                except json.JSONDecodeError:
+                    await _trip_circuit(
                         f"Woolworths search returned non-JSON ({resp.status_code}): "
-                        f"{resp.text[:160]!r}"
-                    ) from exc
+                        f"{resp.text[:120]!r}"
+                    )
                 items = (payload.get("products") or {}).get("items") or []
+                await _note_success()
                 break
+            except WoolworthsCatalogueUnavailable:
+                raise
             except httpx.HTTPError as exc:
                 last_exc = exc
-                await asyncio.sleep(0.4 * (attempt + 1))
+                await asyncio.sleep(0.35 * (attempt + 1))
                 continue
         else:
             assert last_exc is not None
-            raise last_exc
+            await _trip_circuit(f"Woolworths search failed: {last_exc!r}")
 
     out: list[dict[str, Any]] = []
     for item in items:

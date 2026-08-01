@@ -63,7 +63,7 @@ async def _match_one(
             return exc
 
 
-async def _basket_for_store(
+async def basket_for_store(
     store: StoreRef,
     items: list[GroceryLineItem],
     match_fn: MatchFn,
@@ -167,9 +167,11 @@ async def run_price_check(
 ) -> PriceCheckResult:
     if not items:
         return PriceCheckResult(baskets=[], split=None)
-    baskets = await asyncio.gather(
-        *(_basket_for_store(store, items, match_fn) for store in stores)
-    )
+    # Sequential per store — keeps cloud gateways under timeout and lets one
+    # blocked chain (e.g. WW/Akamai) fail fast without starving the others.
+    baskets: list[PriceCheckStoreBasket] = []
+    for store in stores:
+        baskets.append(await basket_for_store(store, items, match_fn))
     split = compute_split(list(baskets)) if include_split else None
     # Sort cheapest first
     ordered = sorted(baskets, key=lambda b: (b.total, b.store.name))

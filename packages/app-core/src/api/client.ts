@@ -294,14 +294,39 @@ export function createApiClient(config: ApiClientConfig) {
       return jsonFetch<{ stores: StoreRef[] }>(`/api/stores/search${qs ? `?${qs}` : ""}`);
     },
 
-    runPriceCheck: (opts: { store_ids: string[]; include_split?: boolean }) =>
-      jsonFetch<PriceCheckResult>("/api/price-check", {
-        method: "POST",
-        body: JSON.stringify({
-          store_ids: opts.store_ids,
-          include_split: opts.include_split ?? false,
-        }),
-      }),
+    runPriceCheck: async (
+      opts: { store_ids: string[]; include_split?: boolean },
+      onStatus?: (message: string) => void,
+    ) => {
+      let result: PriceCheckResult | null = null;
+      let errMsg = "";
+      await streamSSE(
+        "/api/price-check",
+        (event, data) => {
+          if (event === "status" && data && typeof data === "object") {
+            const msg = (data as { message?: string }).message;
+            if (msg && onStatus) onStatus(msg);
+          } else if (event === "complete" && data && typeof data === "object") {
+            result = data as PriceCheckResult;
+          } else if (event === "error") {
+            errMsg =
+              data && typeof data === "object" && "message" in data
+                ? String((data as { message: unknown }).message)
+                : "Price check failed";
+          }
+        },
+        {
+          method: "POST",
+          body: JSON.stringify({
+            store_ids: opts.store_ids,
+            include_split: opts.include_split ?? false,
+          }),
+        },
+      );
+      if (errMsg) throw new Error(errMsg);
+      if (!result) throw new Error("Price check returned no result");
+      return result;
+    },
 
     addToCart: (opts: { allow_over_budget?: boolean; export_only?: boolean }) =>
       jsonFetch<CartResult>("/api/cart/add-after-approve", {

@@ -63,10 +63,17 @@ SUSPECT_PRODUCT_HINTS: dict[str, tuple[str, ...]] = {
 }
 
 
-def _sse_complete(client: httpx.Client, method: str, path: str, *, timeout: float) -> dict:
+def _sse_complete(
+    client: httpx.Client,
+    method: str,
+    path: str,
+    *,
+    timeout: float,
+    json_body: dict | None = None,
+) -> dict:
     complete = None
     errors: list[str] = []
-    with client.stream(method, path, timeout=timeout) as response:
+    with client.stream(method, path, json=json_body, timeout=timeout) as response:
         if response.status_code >= 400:
             raise RuntimeError(f"{method} {path} -> {response.status_code}: {response.read()[:500]}")
         event = "message"
@@ -220,14 +227,13 @@ def run_once(
             raise RuntimeError("empty shop list")
 
         print("  price-check ...")
-        pc = client.post(
+        result = _sse_complete(
+            client,
+            "POST",
             "/api/price-check",
-            json={"store_ids": ids, "include_split": True},
-            timeout=240.0,
+            json_body={"store_ids": ids, "include_split": True},
+            timeout=420.0,
         )
-        if pc.status_code >= 400:
-            raise RuntimeError(f"price-check {pc.status_code}: {pc.text[:800]}")
-        result = pc.json()
 
     baskets = _basket_stats(result)
     suspects = _suspect_matches(result)

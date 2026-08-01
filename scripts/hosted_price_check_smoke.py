@@ -199,9 +199,9 @@ def main() -> int:
             client.post("/api/profile", json=answers).raise_for_status()
 
             # SSE helpers
-            def sse(method: str, path: str, timeout: float = 300.0) -> dict:
+            def sse(method: str, path: str, timeout: float = 300.0, json_body: dict | None = None) -> dict:
                 complete = None
-                with client.stream(method, path, timeout=timeout) as resp:
+                with client.stream(method, path, json=json_body, timeout=timeout) as resp:
                     resp.raise_for_status()
                     event = "message"
                     data_lines: list[str] = []
@@ -212,6 +212,8 @@ def main() -> int:
                                 payload = json.loads("\n".join(data_lines))
                                 if event == "complete":
                                     complete = payload
+                                elif event == "error":
+                                    raise RuntimeError(str(payload))
                             event = "message"
                             data_lines = []
                             continue
@@ -237,17 +239,12 @@ def main() -> int:
             fc = [s for s in store_list if s.get("chain") == "freshchoice"]
             print(f"  freshchoice hits={len(fc)}")
 
-            pc = client.post(
+            result = sse(
+                "POST",
                 "/api/price-check",
-                json={"store_ids": CHCH_STORES, "include_split": True},
-                timeout=240.0,
+                timeout=420.0,
+                json_body={"store_ids": CHCH_STORES, "include_split": True},
             )
-            if pc.status_code >= 400:
-                print(f"FAIL API price-check {pc.status_code}: {pc.text[:800]}", file=sys.stderr)
-                (OUT / "api-error.json").write_text(pc.text, encoding="utf-8")
-                browser.close()
-                return 1
-            result = pc.json()
             (OUT / "api-price-check.json").write_text(json.dumps(result, indent=2) + "\n", encoding="utf-8")
             issues = []
             for b in result.get("baskets") or []:
@@ -257,13 +254,14 @@ def main() -> int:
                 n = live + est
                 pct = round(100 * live / n, 1) if n else 0
                 note = store.get("pricing_note") or ""
+                warn = str(b.get("warning") or "")
                 print(
                     f"  [{store.get('chain')}] {store.get('name')}: "
-                    f"live={live}/{n} ({pct}%) est={est} note={note!r}"
+                    f"live={live}/{n} ({pct}%) est={est} note={note!r} warning={warn!r}"
                 )
                 if store.get("chain") == "freshchoice" and "not wired" in note.lower():
                     issues.append("FreshChoice still estimate-only on Render (old deploy?)")
-                if live < 1:
+                if live < 1 and store.get("chain") != "woolworths":
                     issues.append(f"{store.get('name')}: zero live matches")
                 if store.get("chain") == "freshchoice" and pct < 50:
                     issues.append(f"FreshChoice live match rate too low: {pct}%")

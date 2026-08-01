@@ -209,3 +209,39 @@ async def test_woolworths_unknown_suburb_offers_synthetic():
     assert stores
     assert stores[0].id.startswith("woolworths:local:")
 
+
+@pytest.mark.asyncio
+async def test_woolworths_circuit_opens_after_hard_block(monkeypatch):
+    import httpx
+
+    from price_check import woolworths_public as ww
+
+    ww.reset_circuit_for_tests()
+
+    class FakeResp:
+        status_code = 403
+        text = "blocked"
+        request = httpx.Request("GET", "https://www.woolworths.co.nz/api/v1/products")
+
+        def raise_for_status(self):
+            raise httpx.HTTPStatusError("403", request=self.request, response=self)
+
+        def json(self):
+            return {}
+
+    class FakeClient:
+        is_closed = False
+
+        async def get(self, *args, **kwargs):
+            return FakeResp()
+
+    async def fake_get_client():
+        return FakeClient()
+
+    monkeypatch.setattr(ww, "_get_client", fake_get_client)
+    with pytest.raises(ww.WoolworthsCatalogueUnavailable):
+        await ww.search_products("milk")
+    with pytest.raises(ww.WoolworthsCatalogueUnavailable):
+        await ww.search_products("bread")
+    ww.reset_circuit_for_tests()
+
