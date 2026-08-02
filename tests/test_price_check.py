@@ -27,21 +27,31 @@ def _store(sid: str, chain: StoreChain, name: str) -> StoreRef:
 
 
 @pytest.mark.asyncio
-async def test_estimate_fallback_when_no_live_match():
+async def test_zero_live_store_is_skipped_not_compared():
     items = [_item("milk", 4.5), _item("bread", 3.2)]
     store = _store("woolworths:online", StoreChain.WOOLWORTHS, "WW Online")
+    pns = _store("paknsave:1", StoreChain.PAKNSAVE, "PnS")
 
-    async def match_fn(_store, item):
-        return None
+    async def match_fn(store, item):
+        if store.id.startswith("woolworths"):
+            return None
+        return PriceCheckLine(
+            ingredient=item.ingredient,
+            quantity=1,
+            unit="each",
+            product_name=item.ingredient,
+            sku="X",
+            unit_price=float(item.unit_price),
+            line_total=float(item.line_total),
+            price_source=PriceSource.LIVE,
+        )
 
-    result = await run_price_check(stores=[store], items=items, match_fn=match_fn)
+    result = await run_price_check(stores=[store, pns], items=items, match_fn=match_fn)
     assert len(result.baskets) == 1
-    basket = result.baskets[0]
-    assert basket.estimate_count == 2
-    assert basket.live_count == 0
-    assert basket.total == pytest.approx(7.7)
-    assert all(line.price_source == PriceSource.ESTIMATE for line in basket.lines)
-    assert "estimate" in basket.lines[0].note.lower()
+    assert result.baskets[0].store.id == "paknsave:1"
+    assert len(result.skipped) == 1
+    assert result.skipped[0].store.id == "woolworths:online"
+    assert "not included" in result.skipped[0].reason.lower()
 
 
 @pytest.mark.asyncio
@@ -201,13 +211,13 @@ async def test_woolworths_suburb_search_finds_ferrymead():
 
 
 @pytest.mark.asyncio
-async def test_woolworths_unknown_suburb_offers_synthetic():
+async def test_woolworths_unknown_suburb_does_not_invent_store():
     from price_check.directory import search_stores
     from price_check.models import StoreChain
 
     stores = await search_stores("Someobscureville", StoreChain.WOOLWORTHS, limit=5)
-    assert stores
-    assert stores[0].id.startswith("woolworths:local:")
+    assert stores == []
+    assert not any(s.id.startswith("woolworths:local:") for s in stores)
 
 
 @pytest.mark.asyncio

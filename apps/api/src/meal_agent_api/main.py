@@ -1265,10 +1265,14 @@ async def price_check(
                     )
                     continue
                 store = basket.store
+                if basket.live_count > 0:
+                    msg = f"Matched {store.name} ({basket.live_count} live)"
+                else:
+                    msg = f"Skipping {store.name} — no live prices"
                 yield _sse_event(
                     "status",
                     {
-                        "message": f"Matched {store.name}",
+                        "message": msg,
                         "done": idx + 1,
                         "total": len(stores),
                         "store_id": store.id,

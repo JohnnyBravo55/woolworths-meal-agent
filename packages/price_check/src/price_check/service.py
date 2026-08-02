@@ -8,7 +8,12 @@ from shared.models import GroceryLineItem
 
 from price_check import foodstuffs, freshchoice, woolworths_public
 from price_check.directory import get_store
-from price_check.engine import basket_for_store, compute_split, run_price_check
+from price_check.engine import (
+    basket_for_store,
+    compute_split,
+    filter_comparable_baskets,
+    run_price_check,
+)
 from price_check.models import (
     PriceCheckLine,
     PriceCheckResult,
@@ -86,6 +91,7 @@ def finalize_price_check(
     *,
     include_split: bool,
 ) -> PriceCheckResult:
-    split = compute_split(baskets) if include_split else None
-    ordered = sorted(baskets, key=lambda b: (b.total, b.store.name))
-    return PriceCheckResult(baskets=ordered, split=split)
+    kept, skipped = filter_comparable_baskets(baskets)
+    split = compute_split(kept) if include_split else None
+    ordered = sorted(kept, key=lambda b: (b.total, b.store.name))
+    return PriceCheckResult(baskets=ordered, skipped=skipped, split=split)

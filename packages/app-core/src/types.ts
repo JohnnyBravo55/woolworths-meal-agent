@@ -167,8 +167,14 @@ export interface PriceSplitResult {
   note: string;
 }
 
+export interface PriceCheckSkippedStore {
+  store: StoreRef;
+  reason: string;
+}
+
 export interface PriceCheckResult {
   baskets: PriceCheckStoreBasket[];
+  skipped?: PriceCheckSkippedStore[];
   split: PriceSplitResult | null;
 }
 

@@ -11,6 +11,7 @@ from woolworths_adapter.estimates import estimate_price
 from price_check.models import (
     PriceCheckLine,
     PriceCheckResult,
+    PriceCheckSkippedStore,
     PriceCheckStoreBasket,
     PriceSource,
     PriceSplitAssignment,
@@ -75,12 +76,9 @@ async def basket_for_store(
     if errors and len(errors) == len(items):
         msg = str(errors[0]).strip() or type(errors[0]).__name__
         if "Woolworths" in type(errors[0]).__name__ or "Woolworths" in msg:
-            warning = (
-                "Woolworths live catalogue isn't reachable from the hosted server. "
-                "Showing estimates — Pak'nSave, New World, and FreshChoice still use live prices."
-            )
+            warning = "Woolworths live catalogue isn't reachable from this server."
         else:
-            warning = f"Live pricing unavailable ({msg}). Using estimates."
+            warning = f"Live pricing unavailable ({msg})."
     elif errors:
         msg = str(errors[0]).strip() or type(errors[0]).__name__
         warning = f"{len(errors)} live lookup(s) failed ({msg}); those lines use estimates."
@@ -108,6 +106,25 @@ async def basket_for_store(
         lines=lines,
         warning=warning,
     )
+
+
+def filter_comparable_baskets(
+    baskets: list[PriceCheckStoreBasket],
+) -> tuple[list[PriceCheckStoreBasket], list[PriceCheckSkippedStore]]:
+    """Drop stores with zero live matches — never compare invented estimate-only totals."""
+    kept: list[PriceCheckStoreBasket] = []
+    skipped: list[PriceCheckSkippedStore] = []
+    for basket in baskets:
+        if basket.live_count > 0:
+            kept.append(basket)
+            continue
+        reason = (basket.warning or "").strip() or (
+            "No live catalogue prices for this store — not included in comparison."
+        )
+        if "not included" not in reason.lower():
+            reason = f"{reason} Not included in comparison."
+        skipped.append(PriceCheckSkippedStore(store=basket.store, reason=reason))
+    return kept, skipped
 
 
 def compute_split(baskets: list[PriceCheckStoreBasket]) -> PriceSplitResult | None:
@@ -176,10 +193,10 @@ async def run_price_check(
         return PriceCheckResult(baskets=[], split=None)
     # Sequential per store — keeps cloud gateways under timeout and lets one
     # blocked chain (e.g. WW/Akamai) fail fast without starving the others.
-    baskets: list[PriceCheckStoreBasket] = []
+    raw: list[PriceCheckStoreBasket] = []
     for store in stores:
-        baskets.append(await basket_for_store(store, items, match_fn))
+        raw.append(await basket_for_store(store, items, match_fn))
+    baskets, skipped = filter_comparable_baskets(raw)
     split = compute_split(list(baskets)) if include_split else None
-    # Sort cheapest first
     ordered = sorted(baskets, key=lambda b: (b.total, b.store.name))
-    return PriceCheckResult(baskets=ordered, split=split)
+    return PriceCheckResult(baskets=ordered, skipped=skipped, split=split)

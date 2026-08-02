@@ -146,19 +146,12 @@ def store_from_query(query: str) -> StoreRef | None:
 def resolve_store_id(store_id: str) -> StoreRef | None:
     if not store_id.startswith("woolworths:"):
         return None
+    # Synthetic locality ids are no longer offered — reject them.
+    if store_id.startswith("woolworths:local:"):
+        return None
     for store in list_stores():
         if store.id == store_id:
             return store
-    if store_id.startswith("woolworths:local:"):
-        label = store_id.split(":", 2)[-1].replace("-", " ").title()
-        return StoreRef(
-            id=store_id,
-            chain=StoreChain.WOOLWORTHS,
-            name=f"Woolworths {label} (online prices)",
-            address=f"{label}, New Zealand",
-            suburb=label,
-            pricing_note="Online catalogue prices",
-        )
     return None
 
 

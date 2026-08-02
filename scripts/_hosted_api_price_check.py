@@ -105,6 +105,9 @@ def main() -> int:
         OUT.write_text(json.dumps(result, indent=2) + "\n", encoding="utf-8")
 
         issues: list[str] = []
+        for sk in result.get("skipped") or []:
+            s = sk.get("store") or {}
+            print(f"[skipped] {s.get('chain')} {s.get('name')}: {sk.get('reason')}")
         for b in result.get("baskets") or []:
             s = b.get("store") or {}
             live = int(b.get("live_count") or 0)
@@ -119,16 +122,19 @@ def main() -> int:
             )
             if "not wired" in note.lower():
                 issues.append(f"{s.get('name')}: still estimate-only ({note})")
-            # WW from cloud IPs is often Akamai-blocked — estimates + warning is OK.
-            if live < 1 and s.get("chain") != "woolworths":
-                issues.append(f"{s.get('name')}: zero live matches")
-            if s.get("chain") == "woolworths" and live < 1 and "unavailable" not in warn.lower() and "blocked" not in warn.lower():
-                issues.append(f"Woolworths: zero live matches without catalogue-block warning")
+            if live < 1:
+                issues.append(f"{s.get('name')}: zero-live basket should have been skipped")
             if s.get("chain") == "freshchoice" and pct < 40:
                 issues.append(f"FreshChoice live rate low: {pct}%")
 
-        if len(result.get("baskets") or []) < 4:
-            issues.append(f"expected 4 baskets, got {len(result.get('baskets') or [])}")
+        # WW is often skipped on Render (Akamai); other three chains must compare.
+        chains = { (b.get("store") or {}).get("chain") for b in (result.get("baskets") or []) }
+        for need in ("new_world", "paknsave", "freshchoice"):
+            if need not in chains:
+                issues.append(f"missing live basket for {need}")
+        if any((b.get("store") or {}).get("chain") == "woolworths" and int(b.get("live_count") or 0) < 1
+               for b in (result.get("baskets") or [])):
+            issues.append("Woolworths estimate-only basket leaked into comparison")
 
         if issues:
             print("FAIL:", file=sys.stderr)

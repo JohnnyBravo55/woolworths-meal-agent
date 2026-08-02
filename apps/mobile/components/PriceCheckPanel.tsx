@@ -179,6 +179,16 @@ export function PriceCheckPanel() {
 
           {error ? <Text style={styles.error}>{error}</Text> : null}
 
+          {result?.skipped?.length ? (
+            <View style={styles.skippedBox}>
+              {result.skipped.map((s) => (
+                <Text key={s.store.id} style={styles.skippedText}>
+                  Skipped {s.store.name}: {s.reason}
+                </Text>
+              ))}
+            </View>
+          ) : null}
+
           {result
             ? result.baskets.map((basket) => {
                 const key = basket.store.id;
@@ -303,6 +313,16 @@ const styles = StyleSheet.create({
   storeName: { fontWeight: "700", color: theme.text, fontSize: 14 },
   muted: { color: theme.textMuted, fontSize: 12, marginTop: 2 },
   warn: { color: "#9a3412", fontSize: 11, marginTop: 4, lineHeight: 15 },
+  skippedBox: {
+    marginTop: 10,
+    padding: 10,
+    borderRadius: 8,
+    backgroundColor: "#fff7ed",
+    borderWidth: 1,
+    borderColor: "#fed7aa",
+    gap: 6,
+  },
+  skippedText: { color: "#9a3412", fontSize: 12, lineHeight: 16 },
   splitToggle: { marginBottom: 10 },
   error: { color: "#b91c1c", marginTop: 8, fontSize: 13 },
   resultCard: {

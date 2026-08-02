@@ -195,6 +195,15 @@ export function PriceCheckPanel() {
 
           {result && (
             <div className="space-y-3">
+              {result.skipped && result.skipped.length > 0 ? (
+                <div className="space-y-1 rounded-lg border border-amber-200 bg-amber-50 px-3 py-2 text-sm text-amber-900">
+                  {result.skipped.map((s) => (
+                    <p key={s.store.id}>
+                      Skipped {s.store.name}: {s.reason}
+                    </p>
+                  ))}
+                </div>
+              ) : null}
               {result.baskets.map((basket) => {
                 const key = basket.store.id;
                 const isOpen = !!expanded[key];

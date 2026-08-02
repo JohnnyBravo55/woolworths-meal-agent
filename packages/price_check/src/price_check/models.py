@@ -52,6 +52,13 @@ class PriceCheckStoreBasket(BaseModel):
     warning: str = ""
 
 
+class PriceCheckSkippedStore(BaseModel):
+    """Store omitted from comparison because live pricing was unavailable."""
+
+    store: StoreRef
+    reason: str
+
+
 class PriceSplitAssignment(BaseModel):
     ingredient: str
     store_id: str
@@ -76,4 +83,5 @@ class PriceCheckRequest(BaseModel):
 
 class PriceCheckResult(BaseModel):
     baskets: list[PriceCheckStoreBasket] = Field(default_factory=list)
+    skipped: list[PriceCheckSkippedStore] = Field(default_factory=list)
     split: PriceSplitResult | None = None
