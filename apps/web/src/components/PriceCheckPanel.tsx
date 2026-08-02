@@ -1,5 +1,12 @@
 import { useEffect, useMemo, useState } from "react";
-import type { PriceCheckResult, StoreChain, StoreRef } from "@meal-agent/app-core";
+import type { PriceCheckLine, PriceCheckResult, StoreChain, StoreRef } from "@meal-agent/app-core";
+import {
+  lineBoughtKey,
+  lineCopyText,
+  lineProductUrl,
+  lineSearchUrl,
+  storeShopUrl,
+} from "@meal-agent/app-core";
 import { searchStores, runPriceCheck } from "../api/client";
 import { Button } from "./ui/Button";
 import { Card, CardBody, CardHeader } from "./ui/Card";
@@ -13,6 +20,76 @@ const CHAINS: { id: StoreChain; label: string }[] = [
 
 const MAX_STORES = 4;
 
+function openUrl(url: string) {
+  if (!url) return;
+  window.open(url, "_blank", "noopener,noreferrer");
+}
+
+async function copyLine(line: PriceCheckLine) {
+  const text = lineCopyText(line);
+  if (!text) return;
+  try {
+    await navigator.clipboard.writeText(text);
+  } catch {
+    // Ignore clipboard failures (permissions).
+  }
+}
+
+function LineActions({
+  store,
+  line,
+  bought,
+  onToggleBought,
+}: {
+  store: StoreRef;
+  line: PriceCheckLine;
+  bought: boolean;
+  onToggleBought: () => void;
+}) {
+  const productUrl = lineProductUrl(store, line);
+  const searchUrl = lineSearchUrl(store, line);
+  return (
+    <div className="mt-1.5 flex flex-wrap gap-1.5">
+      {productUrl ? (
+        <button
+          type="button"
+          className="rounded border border-slate-300 bg-white px-2 py-0.5 text-[11px] font-semibold text-slate-700 hover:bg-slate-50"
+          onClick={() => openUrl(productUrl)}
+        >
+          Open
+        </button>
+      ) : null}
+      {searchUrl ? (
+        <button
+          type="button"
+          className="rounded border border-slate-300 bg-white px-2 py-0.5 text-[11px] font-semibold text-slate-700 hover:bg-slate-50"
+          onClick={() => openUrl(searchUrl)}
+        >
+          Search
+        </button>
+      ) : null}
+      <button
+        type="button"
+        className="rounded border border-slate-300 bg-white px-2 py-0.5 text-[11px] font-semibold text-slate-700 hover:bg-slate-50"
+        onClick={() => copyLine(line)}
+      >
+        Copy
+      </button>
+      <button
+        type="button"
+        className={`rounded border px-2 py-0.5 text-[11px] font-semibold ${
+          bought
+            ? "border-green-800 bg-green-800 text-white"
+            : "border-slate-300 bg-white text-slate-700 hover:bg-slate-50"
+        }`}
+        onClick={onToggleBought}
+      >
+        {bought ? "Bought" : "Mark"}
+      </button>
+    </div>
+  );
+}
+
 export function PriceCheckPanel() {
   const [open, setOpen] = useState(false);
   const [query, setQuery] = useState("");
@@ -25,6 +102,7 @@ export function PriceCheckPanel() {
   const [error, setError] = useState("");
   const [result, setResult] = useState<PriceCheckResult | null>(null);
   const [expanded, setExpanded] = useState<Record<string, boolean>>({});
+  const [bought, setBought] = useState<Record<string, boolean>>({});
 
   const selectedIds = useMemo(() => new Set(selected.map((s) => s.id)), [selected]);
 
@@ -76,6 +154,7 @@ export function PriceCheckPanel() {
       });
       setResult(res);
       setExpanded({});
+      setBought({});
     } catch (e) {
       setError(e instanceof Error ? e.message : String(e));
     } finally {
@@ -83,13 +162,18 @@ export function PriceCheckPanel() {
     }
   };
 
+  const toggleBought = (key: string) => {
+    setBought((prev) => ({ ...prev, [key]: !prev[key] }));
+  };
+
   return (
     <Card>
       <CardHeader className="flex flex-wrap items-center justify-between gap-2">
         <div>
-          <h3 className="font-semibold">Compare store prices</h3>
+          <h3 className="font-semibold">Compare & shop stores</h3>
           <p className="text-sm text-slate-600">
-            Login-free price check across local branches. Unmatched items keep your list estimate.
+            Login-free prices, then Open / Search on the store site. You add items yourself — no silent
+            cart for New World, Pak&apos;nSave, or FreshChoice.
           </p>
         </div>
         <Button
@@ -207,6 +291,7 @@ export function PriceCheckPanel() {
               {result.baskets.map((basket) => {
                 const key = basket.store.id;
                 const isOpen = !!expanded[key];
+                const shopUrl = storeShopUrl(basket.store);
                 return (
                   <div key={key} className="rounded-lg border border-slate-200">
                     <button
@@ -223,24 +308,51 @@ export function PriceCheckPanel() {
                       </span>
                       <span className="font-semibold">${basket.total.toFixed(2)}</span>
                     </button>
+                    {shopUrl ? (
+                      <div className="px-3 pb-2">
+                        <Button
+                          type="button"
+                          variant="secondary"
+                          onClick={() => openUrl(shopUrl)}
+                        >
+                          Shop at {basket.store.name}
+                        </Button>
+                      </div>
+                    ) : null}
                     {isOpen && (
                       <ul className="border-t border-slate-100 px-3 py-2 text-sm">
-                        {basket.lines.map((line, i) => (
-                          <li
-                            key={`${line.ingredient}-${i}`}
-                            className="flex justify-between gap-3 border-b border-slate-50 py-2 last:border-0"
-                          >
-                            <span>
-                              <span className="font-medium">{line.ingredient}</span>
-                              <span className="mt-0.5 block text-xs text-slate-500">
-                                {line.product_name || "—"}
-                                {line.note ? ` · ${line.note}` : ""}
-                                {line.price_source === "estimate" ? " · estimate" : ""}
+                        {basket.lines.map((line, i) => {
+                          const bKey = lineBoughtKey(key, line.ingredient, i);
+                          const isBought = !!bought[bKey];
+                          return (
+                            <li
+                              key={`${line.ingredient}-${i}`}
+                              className={`flex justify-between gap-3 border-b border-slate-50 py-2 last:border-0 ${
+                                isBought ? "opacity-70" : ""
+                              }`}
+                            >
+                              <span>
+                                <span
+                                  className={`font-medium ${isBought ? "text-slate-500 line-through" : ""}`}
+                                >
+                                  {line.ingredient}
+                                </span>
+                                <span className="mt-0.5 block text-xs text-slate-500">
+                                  {line.product_name || "—"}
+                                  {line.note ? ` · ${line.note}` : ""}
+                                  {line.price_source === "estimate" ? " · estimate" : ""}
+                                </span>
+                                <LineActions
+                                  store={basket.store}
+                                  line={line}
+                                  bought={isBought}
+                                  onToggleBought={() => toggleBought(bKey)}
+                                />
                               </span>
-                            </span>
-                            <span>${line.line_total.toFixed(2)}</span>
-                          </li>
-                        ))}
+                              <span>${line.line_total.toFixed(2)}</span>
+                            </li>
+                          );
+                        })}
                       </ul>
                     )}
                   </div>
@@ -270,22 +382,43 @@ export function PriceCheckPanel() {
                   </button>
                   {expanded.split && (
                     <ul className="border-t border-emerald-100 px-3 py-2 text-sm">
-                      {result.split.assignments.map((a, i) => (
-                        <li
-                          key={`${a.ingredient}-${i}`}
-                          className="flex justify-between gap-3 border-b border-emerald-100/60 py-2 last:border-0"
-                        >
-                          <span>
-                            <span className="font-medium">{a.ingredient}</span>
-                            <span className="mt-0.5 block text-xs text-emerald-900">
-                              {a.store_name}
-                              {a.line.note ? ` · ${a.line.note}` : ""}
-                              {a.line.price_source === "estimate" ? " · estimate" : ""}
+                      {result.split.assignments.map((a, i) => {
+                        const bKey = lineBoughtKey(a.store_id, a.ingredient, i);
+                        const isBought = !!bought[bKey];
+                        const store: StoreRef = {
+                          id: a.store_id,
+                          chain: a.chain,
+                          name: a.store_name,
+                        };
+                        return (
+                          <li
+                            key={`${a.ingredient}-${i}`}
+                            className={`flex justify-between gap-3 border-b border-emerald-100/60 py-2 last:border-0 ${
+                              isBought ? "opacity-70" : ""
+                            }`}
+                          >
+                            <span>
+                              <span
+                                className={`font-medium ${isBought ? "text-slate-500 line-through" : ""}`}
+                              >
+                                {a.ingredient}
+                              </span>
+                              <span className="mt-0.5 block text-xs text-emerald-900">
+                                {a.store_name}
+                                {a.line.note ? ` · ${a.line.note}` : ""}
+                                {a.line.price_source === "estimate" ? " · estimate" : ""}
+                              </span>
+                              <LineActions
+                                store={store}
+                                line={a.line}
+                                bought={isBought}
+                                onToggleBought={() => toggleBought(bKey)}
+                              />
                             </span>
-                          </span>
-                          <span>${a.line.line_total.toFixed(2)}</span>
-                        </li>
-                      ))}
+                            <span>${a.line.line_total.toFixed(2)}</span>
+                          </li>
+                        );
+                      })}
                     </ul>
                   )}
                 </div>

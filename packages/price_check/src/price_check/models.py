@@ -29,6 +29,7 @@ class StoreRef(BaseModel):
     latitude: float | None = None
     longitude: float | None = None
     pricing_note: str = ""
+    store_url: str = ""
 
 
 class PriceCheckLine(BaseModel):
@@ -41,6 +42,8 @@ class PriceCheckLine(BaseModel):
     line_total: float
     price_source: PriceSource = PriceSource.ESTIMATE
     note: str = ""
+    product_url: str = ""
+    search_url: str = ""
 
 
 class PriceCheckStoreBasket(BaseModel):

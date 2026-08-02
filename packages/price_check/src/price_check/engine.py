@@ -8,6 +8,7 @@ from collections.abc import Awaitable, Callable
 from shared.models import GroceryLineItem
 from woolworths_adapter.estimates import estimate_price
 
+from price_check.links import enrich_line, with_store_url
 from price_check.models import (
     PriceCheckLine,
     PriceCheckResult,
@@ -25,7 +26,7 @@ MatchFn = Callable[[StoreRef, GroceryLineItem], Awaitable[PriceCheckLine | None]
 _MATCH_SEM = asyncio.Semaphore(8)
 
 
-def _estimate_line(item: GroceryLineItem, *, note: str) -> PriceCheckLine:
+def _estimate_line(store: StoreRef, item: GroceryLineItem, *, note: str) -> PriceCheckLine:
     """Prefer shop-list unit/line totals; fall back to heuristic estimate."""
     unit_price = float(item.unit_price or 0)
     line_total = float(item.line_total or 0)
@@ -39,17 +40,23 @@ def _estimate_line(item: GroceryLineItem, *, note: str) -> PriceCheckLine:
     elif unit_price <= 0:
         qty = float(item.quantity or 1) or 1.0
         unit_price = round(line_total / qty, 2) if qty else line_total
-    return PriceCheckLine(
+    line = PriceCheckLine(
         ingredient=item.ingredient,
         quantity=float(item.quantity or 1),
         unit=item.unit or "each",
         product_name=item.product_name or item.ingredient,
-        sku="",
+        sku=(
+            ""
+            if str(item.sku or "").strip() in ("", "OFFLINE", "PANTRY")
+            else str(item.sku).strip()
+        ),
         unit_price=round(unit_price, 2),
         line_total=round(line_total, 2),
         price_source=PriceSource.ESTIMATE,
         note=note,
+        product_url=str(item.product_url or ""),
     )
+    return enrich_line(store, line)
 
 
 async def _match_one(
@@ -69,6 +76,7 @@ async def basket_for_store(
     items: list[GroceryLineItem],
     match_fn: MatchFn,
 ) -> PriceCheckStoreBasket:
+    store = with_store_url(store)
     lines: list[PriceCheckLine] = []
     warning = ""
     matched = await asyncio.gather(*(_match_one(store, item, match_fn) for item in items))
@@ -86,14 +94,14 @@ async def basket_for_store(
     for item, live in zip(items, matched, strict=True):
         if isinstance(live, BaseException):
             note = "estimate — live pricing unavailable for this store"
-            lines.append(_estimate_line(item, note=note))
+            lines.append(_estimate_line(store, item, note=note))
         elif live is not None and live.price_source == PriceSource.LIVE and live.line_total > 0:
-            lines.append(live)
+            lines.append(enrich_line(store, live))
         else:
             note = "estimate — not found at this store"
             if live is not None and live.note:
                 note = live.note
-            lines.append(_estimate_line(item, note=note))
+            lines.append(_estimate_line(store, item, note=note))
 
     live_count = sum(1 for line in lines if line.price_source == PriceSource.LIVE)
     estimate_count = len(lines) - live_count

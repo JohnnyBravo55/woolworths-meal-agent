@@ -11,6 +11,7 @@ from urllib.parse import quote_plus
 
 import httpx
 
+from price_check.links import enrich_line, with_store_url
 from price_check.matching import pick_best_product, search_query_variants
 from price_check.models import PriceCheckLine, PriceSource, StoreChain, StoreRef
 
@@ -60,13 +61,15 @@ def _slug_to_name(slug: str) -> str:
 
 def _fallback_stores() -> list[StoreRef]:
     return [
-        StoreRef(
-            id=f"freshchoice:{slug}",
-            chain=StoreChain.FRESHCHOICE,
-            name=name,
-            address=address,
-            suburb=suburb,
-            pricing_note="Live Myfoodlink catalogue prices",
+        with_store_url(
+            StoreRef(
+                id=f"freshchoice:{slug}",
+                chain=StoreChain.FRESHCHOICE,
+                name=name,
+                address=address,
+                suburb=suburb,
+                pricing_note="Live Myfoodlink catalogue prices",
+            )
         )
         for slug, name, address, suburb in _FALLBACK_STORES
     ]
@@ -98,13 +101,15 @@ async def _resolve_slug(client: httpx.AsyncClient, sid: str) -> StoreRef | None:
         "sumner",
     ):
         suburb = "Christchurch"
-    return StoreRef(
-        id=f"freshchoice:{slug}",
-        chain=StoreChain.FRESHCHOICE,
-        name=_slug_to_name(slug),
-        address=f"{suburb}, New Zealand",
-        suburb=suburb,
-        pricing_note="Live Myfoodlink catalogue prices",
+    return with_store_url(
+        StoreRef(
+            id=f"freshchoice:{slug}",
+            chain=StoreChain.FRESHCHOICE,
+            name=_slug_to_name(slug),
+            address=f"{suburb}, New Zealand",
+            suburb=suburb,
+            pricing_note="Live Myfoodlink catalogue prices",
+        )
     )
 
 
@@ -117,16 +122,21 @@ async def _discover_stores(client: httpx.AsyncClient) -> list[StoreRef]:
     curated = {s.id: s for s in _fallback_stores()}
     merged: dict[str, StoreRef] = {s.id: s for s in out}
     for sid, store in curated.items():
-        merged[sid] = store if sid not in merged else StoreRef(
-            id=store.id,
-            chain=store.chain,
-            name=store.name,
-            address=store.address,
-            suburb=store.suburb,
-            latitude=merged[sid].latitude,
-            longitude=merged[sid].longitude,
-            pricing_note=store.pricing_note,
-        )
+        if sid not in merged:
+            merged[sid] = store
+        else:
+            merged[sid] = with_store_url(
+                StoreRef(
+                    id=store.id,
+                    chain=store.chain,
+                    name=store.name,
+                    address=store.address,
+                    suburb=store.suburb,
+                    latitude=merged[sid].latitude,
+                    longitude=merged[sid].longitude,
+                    pricing_note=store.pricing_note,
+                )
+            )
     return sorted(merged.values(), key=lambda s: s.name.lower())
 
 
@@ -234,7 +244,7 @@ async def match_line(store: StoreRef, ingredient: str, quantity: float, unit: st
     name = " ".join(
         x for x in [best.get("name"), best.get("size")] if x
     ).strip()
-    return PriceCheckLine(
+    line = PriceCheckLine(
         ingredient=ingredient,
         quantity=qty,
         unit=unit or "each",
@@ -245,3 +255,4 @@ async def match_line(store: StoreRef, ingredient: str, quantity: float, unit: st
         price_source=PriceSource.LIVE,
         note="",
     )
+    return enrich_line(store, line)

@@ -127,6 +127,8 @@ export interface StoreRef {
   address?: string;
   suburb?: string;
   pricing_note?: string;
+  /** Homepage / shopfront URL for assisted shopping. */
+  store_url?: string;
 }
 
 export interface PriceCheckLine {
@@ -139,6 +141,10 @@ export interface PriceCheckLine {
   line_total: number;
   price_source: "live" | "estimate";
   note: string;
+  /** Direct product page when known. */
+  product_url?: string;
+  /** Catalogue search URL for this line. */
+  search_url?: string;
 }
 
 export interface PriceCheckStoreBasket {

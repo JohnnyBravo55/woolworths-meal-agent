@@ -395,7 +395,7 @@ export default function App() {
             </div>
             <div className="flex flex-wrap items-center gap-2">
               <span className="text-xs font-semibold text-slate-500">
-                Supermarket cart fill — coming soon
+                Assisted multi-store shopping
               </span>
               <Button variant="ghost" size="sm" onClick={() => setAuthOpen(true)}>
                 Account
@@ -600,28 +600,54 @@ export default function App() {
             />
             <div className="rounded-xl border border-slate-200 bg-white p-8 space-y-5">
               <div className="text-center space-y-2">
-                <h2 className="text-xl font-bold text-slate-900">Fill shopping cart, coming soon</h2>
+                <h2 className="text-xl font-bold text-slate-900">Shop at your supermarket</h2>
                 <p className="text-sm text-slate-600">
-                  Soon you’ll send this list to your supermarket trolley in one tap. For now, use your
-                  shop list — trolley fill is on the way.
+                  Open a store site and add items yourself. For matched products and Search / Open
+                  links, go back to the shop list and use <strong>Compare &amp; shop stores</strong>.
                 </p>
               </div>
-              <div className="grid gap-3 sm:grid-cols-3">
+              <div className="flex justify-center">
+                <button
+                  type="button"
+                  className="rounded-xl bg-[var(--ww-green)] px-5 py-3 text-sm font-bold text-white shadow-sm hover:opacity-95"
+                  onClick={() => setStep(4)}
+                >
+                  Compare &amp; shop on list
+                </button>
+              </div>
+              <div className="grid gap-3 sm:grid-cols-2">
                 {(
                   [
-                    { name: "Woolworths", color: "bg-[#178841]" },
-                    { name: "FreshChoice", color: "bg-[#F36C00]" },
-                    { name: "New World", color: "bg-[#C8102E]" },
+                    {
+                      name: "Woolworths",
+                      color: "bg-[#178841] text-white",
+                      url: "https://www.woolworths.co.nz",
+                    },
+                    {
+                      name: "FreshChoice",
+                      color: "bg-[#F36C00] text-white",
+                      url: "https://store.freshchoice.co.nz",
+                    },
+                    {
+                      name: "New World",
+                      color: "bg-[#C8102E] text-white",
+                      url: "https://www.newworld.co.nz",
+                    },
+                    {
+                      name: "Pak'nSave",
+                      color: "bg-[#FFD100] text-slate-900",
+                      url: "https://www.paknsave.co.nz",
+                    },
                   ] as const
                 ).map((r) => (
                   <button
                     key={r.name}
                     type="button"
-                    className={`${r.color} text-white rounded-xl px-4 py-4 font-semibold shadow-sm opacity-95 cursor-default`}
-                    onClick={() => setError(`${r.name} cart fill — coming soon`)}
+                    className={`${r.color} rounded-xl px-4 py-4 font-semibold shadow-sm hover:opacity-95`}
+                    onClick={() => window.open(r.url, "_blank", "noopener,noreferrer")}
                   >
                     {r.name}
-                    <span className="block text-xs font-medium opacity-90 mt-1">Coming soon</span>
+                    <span className="block text-xs font-medium opacity-90 mt-1">Open site</span>
                   </button>
                 ))}
               </div>
@@ -631,7 +657,7 @@ export default function App() {
       </main>
 
       <footer className="border-t border-slate-200 bg-white py-3 text-center text-xs text-slate-500">
-        Shop list is ready to review — filling a supermarket trolley is coming soon.
+        Shop list ready — use Compare &amp; shop stores for assisted multi-store shopping.
       </footer>
 
       <AuthModal

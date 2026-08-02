@@ -12,6 +12,7 @@ from typing import Any
 
 import httpx
 
+from price_check.links import enrich_line, with_store_url
 from price_check.matching import pick_best_product, search_query_variants
 from price_check.models import PriceCheckLine, PriceSource, StoreChain, StoreRef
 
@@ -87,7 +88,7 @@ def is_circuit_open() -> bool:
 
 
 def online_store() -> StoreRef:
-    return StoreRef(
+    store = StoreRef(
         id="woolworths:online",
         chain=StoreChain.WOOLWORTHS,
         name="Woolworths Online",
@@ -95,6 +96,7 @@ def online_store() -> StoreRef:
         suburb="Online",
         pricing_note="Online catalogue prices (login not required)",
     )
+    return with_store_url(store)
 
 
 def _slug(text: str) -> str:
@@ -307,7 +309,7 @@ async def match_line(store: StoreRef, ingredient: str, quantity: float, unit: st
         return None
     qty = float(quantity or 1) or 1.0
     name = " ".join(x for x in [best.get("brand"), best.get("name"), best.get("size")] if x).strip()
-    return PriceCheckLine(
+    line = PriceCheckLine(
         ingredient=ingredient,
         quantity=qty,
         unit=unit or "each",
@@ -318,3 +320,4 @@ async def match_line(store: StoreRef, ingredient: str, quantity: float, unit: st
         price_source=PriceSource.LIVE,
         note="",
     )
+    return enrich_line(store, line)

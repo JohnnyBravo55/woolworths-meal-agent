@@ -1,13 +1,23 @@
 import { useEffect, useMemo, useState } from "react";
 import {
   ActivityIndicator,
+  Platform,
   Pressable,
+  Share,
   StyleSheet,
   Text,
   TextInput,
   View,
 } from "react-native";
-import type { PriceCheckResult, StoreChain, StoreRef } from "@meal-agent/app-core";
+import * as WebBrowser from "expo-web-browser";
+import type { PriceCheckLine, PriceCheckResult, StoreChain, StoreRef } from "@meal-agent/app-core";
+import {
+  lineBoughtKey,
+  lineCopyText,
+  lineProductUrl,
+  lineSearchUrl,
+  storeShopUrl,
+} from "@meal-agent/app-core";
 import { Button } from "@/components/ui/Button";
 import { Card, CardBody, CardHeader, H2 } from "@/components/ui/Card";
 import { theme } from "@/constants/theme";
@@ -23,6 +33,61 @@ const CHAINS: { id: StoreChain | ""; label: string }[] = [
 
 const MAX_STORES = 4;
 
+async function openUrl(url: string) {
+  if (!url) return;
+  await WebBrowser.openBrowserAsync(url);
+}
+
+async function copyLine(line: PriceCheckLine) {
+  const text = lineCopyText(line);
+  if (!text) return;
+  if (Platform.OS === "web" && typeof navigator !== "undefined" && navigator.clipboard?.writeText) {
+    await navigator.clipboard.writeText(text);
+    return;
+  }
+  await Share.share({ message: text });
+}
+
+function LineActions({
+  store,
+  line,
+  bought,
+  onToggleBought,
+}: {
+  store: StoreRef;
+  line: PriceCheckLine;
+  bought: boolean;
+  onToggleBought: () => void;
+}) {
+  const productUrl = lineProductUrl(store, line);
+  const searchUrl = lineSearchUrl(store, line);
+  return (
+    <View style={styles.actions}>
+      {productUrl ? (
+        <Pressable onPress={() => openUrl(productUrl)} style={styles.actionBtn}>
+          <Text style={styles.actionText}>Open</Text>
+        </Pressable>
+      ) : null}
+      {searchUrl ? (
+        <Pressable onPress={() => openUrl(searchUrl)} style={styles.actionBtn}>
+          <Text style={styles.actionText}>Search</Text>
+        </Pressable>
+      ) : null}
+      <Pressable onPress={() => copyLine(line)} style={styles.actionBtn}>
+        <Text style={styles.actionText}>Copy</Text>
+      </Pressable>
+      <Pressable
+        onPress={onToggleBought}
+        style={[styles.actionBtn, bought && styles.actionBtnOn]}
+      >
+        <Text style={[styles.actionText, bought && styles.actionTextOn]}>
+          {bought ? "Bought" : "Mark"}
+        </Text>
+      </Pressable>
+    </View>
+  );
+}
+
 export function PriceCheckPanel() {
   const [open, setOpen] = useState(false);
   const [query, setQuery] = useState("");
@@ -35,6 +100,8 @@ export function PriceCheckPanel() {
   const [error, setError] = useState("");
   const [result, setResult] = useState<PriceCheckResult | null>(null);
   const [expanded, setExpanded] = useState<Record<string, boolean>>({});
+  const [bought, setBought] = useState<Record<string, boolean>>({});
+  const [toast, setToast] = useState("");
 
   const selectedIds = useMemo(() => new Set(selected.map((s) => s.id)), [selected]);
 
@@ -84,6 +151,7 @@ export function PriceCheckPanel() {
       });
       setResult(res);
       setExpanded({});
+      setBought({});
     } catch (e) {
       setError(e instanceof Error ? e.message : String(e));
     } finally {
@@ -91,12 +159,27 @@ export function PriceCheckPanel() {
     }
   };
 
+  const shopAt = async (store: StoreRef) => {
+    const url = storeShopUrl(store);
+    if (!url) {
+      setToast("No store website available for this branch.");
+      return;
+    }
+    setToast("");
+    await openUrl(url);
+  };
+
+  const toggleBought = (key: string) => {
+    setBought((prev) => ({ ...prev, [key]: !prev[key] }));
+  };
+
   return (
     <Card>
       <CardHeader>
-        <H2>Compare store prices</H2>
+        <H2>Compare & shop stores</H2>
         <Text style={styles.sub}>
-          Login-free check across local branches. Missing matches keep your list estimate.
+          Login-free prices for local branches. Then shop with Open / Search links — you add items in
+          the store site (no silent cart for New World, Pak'nSave, or FreshChoice).
         </Text>
         <Button
           title={open ? "Hide price check" : "Run price check"}
@@ -178,6 +261,7 @@ export function PriceCheckPanel() {
           />
 
           {error ? <Text style={styles.error}>{error}</Text> : null}
+          {toast ? <Text style={styles.toast}>{toast}</Text> : null}
 
           {result?.skipped?.length ? (
             <View style={styles.skippedBox}>
@@ -193,6 +277,9 @@ export function PriceCheckPanel() {
             ? result.baskets.map((basket) => {
                 const key = basket.store.id;
                 const isOpen = !!expanded[key];
+                const boughtCount = basket.lines.filter((_, i) =>
+                  bought[lineBoughtKey(key, basket.lines[i].ingredient, i)]
+                ).length;
                 return (
                   <View key={key} style={styles.resultCard}>
                     <Pressable
@@ -203,6 +290,7 @@ export function PriceCheckPanel() {
                         <Text style={styles.storeName}>{basket.store.name}</Text>
                         <Text style={styles.muted}>
                           {basket.live_count} live · {basket.estimate_count} estimate
+                          {boughtCount ? ` · ${boughtCount} bought` : ""}
                         </Text>
                         {basket.warning ? (
                           <Text style={styles.warn}>{basket.warning}</Text>
@@ -210,19 +298,41 @@ export function PriceCheckPanel() {
                       </View>
                       <Text style={styles.total}>${basket.total.toFixed(2)}</Text>
                     </Pressable>
+                    <View style={styles.shopBar}>
+                      <Button
+                        title={`Shop at ${basket.store.name}`}
+                        variant="secondary"
+                        onPress={() => shopAt(basket.store)}
+                      />
+                    </View>
                     {isOpen
-                      ? basket.lines.map((line, i) => (
-                          <View key={`${line.ingredient}-${i}`} style={styles.lineRow}>
-                            <View style={{ flex: 1 }}>
-                              <Text style={styles.lineIng}>{line.ingredient}</Text>
-                              <Text style={styles.muted}>
-                                {line.product_name || "—"}
-                                {line.note ? ` · ${line.note}` : ""}
-                              </Text>
+                      ? basket.lines.map((line, i) => {
+                          const bKey = lineBoughtKey(key, line.ingredient, i);
+                          const isBought = !!bought[bKey];
+                          return (
+                            <View
+                              key={`${line.ingredient}-${i}`}
+                              style={[styles.lineRow, isBought && styles.lineBought]}
+                            >
+                              <View style={{ flex: 1 }}>
+                                <Text style={[styles.lineIng, isBought && styles.lineIngBought]}>
+                                  {line.ingredient}
+                                </Text>
+                                <Text style={styles.muted}>
+                                  {line.product_name || "—"}
+                                  {line.note ? ` · ${line.note}` : ""}
+                                </Text>
+                                <LineActions
+                                  store={basket.store}
+                                  line={line}
+                                  bought={isBought}
+                                  onToggleBought={() => toggleBought(bKey)}
+                                />
+                              </View>
+                              <Text>${line.line_total.toFixed(2)}</Text>
                             </View>
-                            <Text>${line.line_total.toFixed(2)}</Text>
-                          </View>
-                        ))
+                          );
+                        })
                       : null}
                   </View>
                 );
@@ -245,15 +355,35 @@ export function PriceCheckPanel() {
                 <Text style={styles.total}>${result.split.total.toFixed(2)}</Text>
               </Pressable>
               {expanded.split
-                ? result.split.assignments.map((a, i) => (
-                    <View key={`${a.ingredient}-${i}`} style={styles.lineRow}>
-                      <View style={{ flex: 1 }}>
-                        <Text style={styles.lineIng}>{a.ingredient}</Text>
-                        <Text style={styles.muted}>{a.store_name}</Text>
+                ? result.split.assignments.map((a, i) => {
+                    const bKey = lineBoughtKey(a.store_id, a.ingredient, i);
+                    const isBought = !!bought[bKey];
+                    const store: StoreRef = {
+                      id: a.store_id,
+                      chain: a.chain,
+                      name: a.store_name,
+                    };
+                    return (
+                      <View
+                        key={`${a.ingredient}-${i}`}
+                        style={[styles.lineRow, isBought && styles.lineBought]}
+                      >
+                        <View style={{ flex: 1 }}>
+                          <Text style={[styles.lineIng, isBought && styles.lineIngBought]}>
+                            {a.ingredient}
+                          </Text>
+                          <Text style={styles.muted}>{a.store_name}</Text>
+                          <LineActions
+                            store={store}
+                            line={a.line}
+                            bought={isBought}
+                            onToggleBought={() => toggleBought(bKey)}
+                          />
+                        </View>
+                        <Text>${a.line.line_total.toFixed(2)}</Text>
                       </View>
-                      <Text>${a.line.line_total.toFixed(2)}</Text>
-                    </View>
-                  ))
+                    );
+                  })
                 : null}
             </View>
           ) : null}
@@ -325,6 +455,7 @@ const styles = StyleSheet.create({
   skippedText: { color: "#9a3412", fontSize: 12, lineHeight: 16 },
   splitToggle: { marginBottom: 10 },
   error: { color: "#b91c1c", marginTop: 8, fontSize: 13 },
+  toast: { color: theme.text, marginTop: 8, fontSize: 13, fontWeight: "600" },
   resultCard: {
     marginTop: 12,
     borderWidth: 1,
@@ -340,6 +471,10 @@ const styles = StyleSheet.create({
     paddingHorizontal: 12,
     paddingVertical: 12,
   },
+  shopBar: {
+    paddingHorizontal: 12,
+    paddingBottom: 10,
+  },
   total: { fontWeight: "800", fontSize: 15, color: theme.text },
   lineRow: {
     flexDirection: "row",
@@ -349,5 +484,24 @@ const styles = StyleSheet.create({
     borderTopWidth: StyleSheet.hairlineWidth,
     borderTopColor: "#e2e8f0",
   },
+  lineBought: { backgroundColor: "#f8fafc", opacity: 0.85 },
   lineIng: { fontWeight: "600", color: theme.text, fontSize: 13 },
+  lineIngBought: { textDecorationLine: "line-through", color: theme.textMuted },
+  actions: {
+    flexDirection: "row",
+    flexWrap: "wrap",
+    gap: 6,
+    marginTop: 6,
+  },
+  actionBtn: {
+    borderRadius: 8,
+    borderWidth: 1,
+    borderColor: "#cbd5e1",
+    paddingHorizontal: 8,
+    paddingVertical: 4,
+    backgroundColor: "#fff",
+  },
+  actionBtnOn: { backgroundColor: "#14532d", borderColor: "#14532d" },
+  actionText: { fontSize: 11, fontWeight: "700", color: "#334155" },
+  actionTextOn: { color: "#fff" },
 });

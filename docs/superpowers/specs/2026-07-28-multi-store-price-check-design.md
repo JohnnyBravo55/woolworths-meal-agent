@@ -23,9 +23,9 @@ On the shop list step, users can optionally run a **login-free price check** acr
 
 ## Non-goals (v1)
 
-- Add-to-cart for non-Woolworths stores
+- Silent add-to-cart for non-Woolworths stores (assisted shop / deep links are in `2026-08-02-assisted-shop-design.md`)
 - Replacing Woolworths resolve / budget reconciliation
-- National daily scrape warehouse / partner deep-link out
+- National daily scrape warehouse
 
 ## Architecture
 

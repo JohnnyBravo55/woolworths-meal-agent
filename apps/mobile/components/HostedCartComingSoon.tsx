@@ -1,5 +1,7 @@
 import { useEffect, useRef, useState } from "react";
 import { Platform, Pressable, StyleSheet, Text, View } from "react-native";
+import { useRouter } from "expo-router";
+import * as WebBrowser from "expo-web-browser";
 import { FeedbackModal } from "@/components/FeedbackModal";
 import {
   FEEDBACK_AUTO_OPEN_MS,
@@ -9,9 +11,31 @@ import {
 import { theme } from "@/constants/theme";
 
 const RETAILERS = [
-  { id: "woolworths", name: "Woolworths", color: "#178841" },
-  { id: "freshchoice", name: "FreshChoice", color: "#F36C00" },
-  { id: "new-world", name: "New World", color: "#C8102E" },
+  {
+    id: "woolworths",
+    name: "Woolworths",
+    color: "#178841",
+    url: "https://www.woolworths.co.nz",
+  },
+  {
+    id: "freshchoice",
+    name: "FreshChoice",
+    color: "#F36C00",
+    url: "https://store.freshchoice.co.nz",
+  },
+  {
+    id: "new-world",
+    name: "New World",
+    color: "#C8102E",
+    url: "https://www.newworld.co.nz",
+  },
+  {
+    id: "paknsave",
+    name: "Pak'nSave",
+    color: "#FFD100",
+    url: "https://www.paknsave.co.nz",
+    darkText: true,
+  },
 ] as const;
 
 const FEEDBACK_BLUE = "#2563eb";
@@ -32,11 +56,20 @@ function writeStorage(storage: Storage | undefined, key: string): void {
   }
 }
 
+async function openUrl(url: string) {
+  if (Platform.OS === "web" && typeof window !== "undefined") {
+    window.open(url, "_blank", "noopener,noreferrer");
+    return;
+  }
+  await WebBrowser.openBrowserAsync(url);
+}
+
 /**
- * Hosted-only cart teaser: no Woolworths connect / add-to-trolley.
- * Local builds use the real cart screen instead.
+ * Hosted cart step: guided assisted shop (no silent trolley fill).
+ * Native builds use the real Woolworths cart screen instead.
  */
 export function HostedCartComingSoon() {
+  const router = useRouter();
   const [toast, setToast] = useState("");
   const [feedbackOpen, setFeedbackOpen] = useState(false);
   const autoOpenTimerRef = useRef<ReturnType<typeof setTimeout> | null>(null);
@@ -62,8 +95,9 @@ export function HostedCartComingSoon() {
     return clearAutoOpenTimer;
   }, []);
 
-  const onPressRetailer = (name: string) => {
-    setToast(`${name} cart fill — coming soon`);
+  const onPressRetailer = async (name: string, url: string) => {
+    setToast(`Opening ${name}. Use Compare & shop on your list for matched Search / Open links.`);
+    await openUrl(url);
   };
 
   const closeFeedback = () => {
@@ -84,33 +118,63 @@ export function HostedCartComingSoon() {
 
   return (
     <View style={styles.wrap}>
-      <Text style={styles.title}>Fill shopping cart, coming soon</Text>
+      <Text style={styles.title}>Shop at your supermarket</Text>
       <Text style={styles.subtitle}>
-        Soon you’ll send this list to your supermarket trolley in one tap. For now, use your shop list
-        above — trolley fill is on the way.
+        Open a store site and add items yourself. For matched products and Search / Open links, go
+        back to the shop list and use Compare & shop stores.
       </Text>
+
+      <Pressable
+        accessibilityLabel="Back to shop list for assisted shopping"
+        onPress={() => router.push("/shop")}
+        style={({ pressed }) => [styles.primaryBtn, { opacity: pressed ? 0.88 : 1 }]}
+      >
+        <Text style={styles.primaryBtnText} selectable={false}>
+          Compare & shop on list
+        </Text>
+      </Pressable>
 
       <View style={styles.buttons}>
         {RETAILERS.map((r) => (
           <Pressable
             key={r.id}
-            accessibilityLabel={`${r.name}, coming soon`}
-            onPress={() => onPressRetailer(r.name)}
+            accessibilityLabel={`Open ${r.name} website`}
+            onPress={() => onPressRetailer(r.name, r.url)}
             style={({ pressed }) => [
               styles.retailerBtn,
               { backgroundColor: r.color, opacity: pressed ? 0.88 : 1 },
             ]}
           >
-            <View style={styles.logoMark}>
-              <Text style={styles.logoInitial} selectable={false}>
+            <View
+              style={[
+                styles.logoMark,
+                "darkText" in r && r.darkText ? styles.logoMarkDark : null,
+              ]}
+            >
+              <Text
+                style={[
+                  styles.logoInitial,
+                  "darkText" in r && r.darkText ? styles.logoInitialDark : null,
+                ]}
+                selectable={false}
+              >
                 {r.name.charAt(0)}
               </Text>
             </View>
-            <Text style={styles.retailerName} selectable={false}>
+            <Text
+              style={[
+                styles.retailerName,
+                "darkText" in r && r.darkText ? styles.retailerNameDark : null,
+              ]}
+              selectable={false}
+            >
               {r.name}
             </Text>
-            <Text style={styles.coming} selectable={false}>
-              Coming soon
+            <Text
+              style={[styles.coming, "darkText" in r && r.darkText ? styles.comingDark : null]}
+              selectable={false}
+            >
+              Open site
             </Text>
           </Pressable>
         ))}
@@ -155,6 +219,20 @@ const styles = StyleSheet.create({
     textAlign: "center",
     marginBottom: 4,
   },
+  primaryBtn: {
+    alignSelf: "center",
+    backgroundColor: theme.green,
+    borderRadius: 12,
+    paddingVertical: 14,
+    paddingHorizontal: 20,
+    minWidth: 240,
+    alignItems: "center",
+  },
+  primaryBtnText: {
+    color: "#fff",
+    fontSize: 16,
+    fontWeight: "800",
+  },
   buttons: {
     gap: 10,
     marginTop: 4,
@@ -177,10 +255,16 @@ const styles = StyleSheet.create({
     alignItems: "center",
     justifyContent: "center",
   },
+  logoMarkDark: {
+    backgroundColor: "rgba(0,0,0,0.12)",
+  },
   logoInitial: {
     color: "#fff",
     fontSize: 18,
     fontWeight: "800",
+  },
+  logoInitialDark: {
+    color: "#111",
   },
   retailerName: {
     flex: 1,
@@ -188,10 +272,16 @@ const styles = StyleSheet.create({
     fontSize: 17,
     fontWeight: "700",
   },
+  retailerNameDark: {
+    color: "#111",
+  },
   coming: {
     color: "rgba(255,255,255,0.85)",
     fontSize: 12,
     fontWeight: "600",
+  },
+  comingDark: {
+    color: "rgba(0,0,0,0.7)",
   },
   feedbackBtn: {
     marginTop: 18,

@@ -7,6 +7,7 @@ from typing import Any
 
 import httpx
 
+from price_check.links import enrich_line, with_store_url
 from price_check.matching import pick_best_product, search_query_variants
 from price_check.models import PriceCheckLine, PriceSource, StoreChain, StoreRef
 
@@ -97,15 +98,17 @@ async def list_stores(chain: StoreChain) -> list[StoreRef]:
                 if parts[-1].replace(" ", "").isdigit() or any(ch.isdigit() for ch in parts[-1]):
                     suburb = parts[-2] if len(parts) >= 2 else parts[0]
         out.append(
-            StoreRef(
-                id=f"{chain.value}:{sid}",
-                chain=chain,
-                name=name,
-                address=address,
-                suburb=suburb,
-                latitude=s.get("latitude"),
-                longitude=s.get("longitude"),
-                pricing_note="Live in-store / online catalogue prices",
+            with_store_url(
+                StoreRef(
+                    id=f"{chain.value}:{sid}",
+                    chain=chain,
+                    name=name,
+                    address=address,
+                    suburb=suburb,
+                    latitude=s.get("latitude"),
+                    longitude=s.get("longitude"),
+                    pricing_note="Live in-store / online catalogue prices",
+                )
             )
         )
     return out
@@ -209,7 +212,7 @@ async def match_line(store: StoreRef, ingredient: str, quantity: float, unit: st
     product_name = " ".join(
         x for x in [best.get("brand"), best.get("name"), best.get("display")] if x
     ).strip()
-    return PriceCheckLine(
+    line = PriceCheckLine(
         ingredient=ingredient,
         quantity=qty,
         unit=unit or "each",
@@ -220,3 +223,4 @@ async def match_line(store: StoreRef, ingredient: str, quantity: float, unit: st
         price_source=PriceSource.LIVE,
         note="",
     )
+    return enrich_line(store, line)
