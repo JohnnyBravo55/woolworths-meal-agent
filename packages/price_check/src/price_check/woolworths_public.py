@@ -5,6 +5,7 @@ from __future__ import annotations
 import asyncio
 import json
 import re
+import time
 from functools import lru_cache
 from pathlib import Path
 from typing import Any
@@ -64,12 +65,36 @@ async def _note_success() -> None:
         _circuit_open = False
 
 
+_PROBE_LOCK = asyncio.Lock()
+_probe_ok: bool | None = None
+_probe_checked_at = 0.0
+_PROBE_TTL_OK = 30 * 60
+_PROBE_TTL_FAIL = 10 * 60
+
+
 def reset_circuit_for_tests() -> None:
     """Test helper — clear process-wide circuit state."""
-    global _circuit_open, _circuit_failures, _shared_client
+    global _circuit_open, _circuit_failures, _shared_client, _probe_ok, _probe_checked_at
     _circuit_open = False
     _circuit_failures = 0
     _shared_client = None
+    _probe_ok = None
+    _probe_checked_at = 0.0
+
+
+def is_circuit_open() -> bool:
+    return _circuit_open
+
+
+def online_store() -> StoreRef:
+    return StoreRef(
+        id="woolworths:online",
+        chain=StoreChain.WOOLWORTHS,
+        name="Woolworths Online",
+        address="Nationwide online catalogue",
+        suburb="Online",
+        pricing_note="Online catalogue prices (login not required)",
+    )
 
 
 def _slug(text: str) -> str:
@@ -89,16 +114,8 @@ def _load_location_rows() -> list[dict[str, Any]]:
 
 
 def list_stores() -> list[StoreRef]:
-    stores = [
-        StoreRef(
-            id="woolworths:online",
-            chain=StoreChain.WOOLWORTHS,
-            name="Woolworths Online",
-            address="Nationwide online catalogue",
-            suburb="Online",
-            pricing_note="Online catalogue prices (login not required)",
-        )
-    ]
+    """Legacy suburb rows (same online prices). Prefer ``list_stores_for_picker``."""
+    stores = [online_store()]
     for row in _load_location_rows():
         name = str(row.get("name") or "").strip()
         suburb = str(row.get("suburb") or "").strip()
@@ -127,32 +144,51 @@ def list_stores() -> list[StoreRef]:
     return unique
 
 
+async def catalogue_reachable() -> bool:
+    """Probe whether the public WW catalogue answers from this host."""
+    global _probe_ok, _probe_checked_at
+    if _circuit_open:
+        return False
+    now = time.time()
+    ttl = _PROBE_TTL_OK if _probe_ok else _PROBE_TTL_FAIL
+    if _probe_ok is not None and (now - _probe_checked_at) < ttl:
+        return _probe_ok
+    async with _PROBE_LOCK:
+        now = time.time()
+        ttl = _PROBE_TTL_OK if _probe_ok else _PROBE_TTL_FAIL
+        if _probe_ok is not None and (now - _probe_checked_at) < ttl:
+            return _probe_ok
+        try:
+            items = await search_products("milk", limit=1)
+            _probe_ok = bool(items)
+        except Exception:  # noqa: BLE001 — probe must never raise to callers
+            _probe_ok = False
+        _probe_checked_at = time.time()
+        return _probe_ok
+
+
+async def list_stores_for_picker() -> list[StoreRef]:
+    """At most one WW option — prices are nationwide online, not per branch.
+
+    Returns empty when the catalogue is blocked (e.g. Render/Akamai).
+    """
+    if not await catalogue_reachable():
+        return []
+    return [online_store()]
+
+
 def store_from_query(query: str) -> StoreRef | None:
-    """Build a selectable Woolworths locality from free-text suburb search."""
-    q = query.strip()
-    if len(q) < 2:
-        return None
-    label = q.title()
-    return StoreRef(
-        id=f"woolworths:local:{_slug(q)}",
-        chain=StoreChain.WOOLWORTHS,
-        name=f"Woolworths {label} (online prices)",
-        address=f"{label}, New Zealand",
-        suburb=label,
-        pricing_note="Online catalogue prices",
-    )
+    """Deprecated — synthetic localities are no longer offered."""
+    return None
 
 
 def resolve_store_id(store_id: str) -> StoreRef | None:
     if not store_id.startswith("woolworths:"):
         return None
-    # Synthetic locality ids are no longer offered — reject them.
     if store_id.startswith("woolworths:local:"):
         return None
-    for store in list_stores():
-        if store.id == store_id:
-            return store
-    return None
+    # Branch ids all share the online catalogue — normalize to one store.
+    return online_store()
 
 
 async def _get_client() -> httpx.AsyncClient:

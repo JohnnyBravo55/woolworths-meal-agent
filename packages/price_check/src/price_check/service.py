@@ -42,12 +42,17 @@ async def match_store_item(store: StoreRef, item: GroceryLineItem) -> PriceCheck
 async def resolve_stores(store_ids: list[str]) -> tuple[list[StoreRef], list[str]]:
     stores: list[StoreRef] = []
     missing: list[str] = []
+    seen: set[str] = set()
     for sid in store_ids:
         store = await get_store(sid)
         if store is None:
             missing.append(sid)
-        else:
-            stores.append(store)
+            continue
+        # Multiple WW branch ids collapse to woolworths:online — dedupe.
+        if store.id in seen:
+            continue
+        seen.add(store.id)
+        stores.append(store)
     return stores, missing
 
 

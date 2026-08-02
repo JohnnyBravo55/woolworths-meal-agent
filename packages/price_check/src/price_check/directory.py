@@ -11,6 +11,7 @@ from price_check.models import StoreChain, StoreRef
 
 _CACHE: dict[StoreChain, tuple[float, list[StoreRef]]] = {}
 _CACHE_TTL = 6 * 60 * 60
+_WW_CACHE_TTL = 10 * 60
 
 # Weak locality words — useful with a city token, not alone.
 _WEAK_LOCALITY = frozenset({"central", "city", "north", "south", "east", "west", "upper", "lower"})
@@ -49,25 +50,30 @@ def _search_score(store: StoreRef, query: str) -> float:
         return 0.0
     score = 40.0 + 15.0 * len(strong)
     score += 10.0 * sum(1 for t in weak if t in hay)
-    # Prefer non-synthetic Woolworths locality rows when a real suburb match exists.
     if store.id.startswith("woolworths:local:"):
         score -= 5.0
     return score
 
 
+def clear_store_cache() -> None:
+    _CACHE.clear()
+
+
 async def _load_chain(chain: StoreChain) -> list[StoreRef]:
     cached = _CACHE.get(chain)
+    ttl = _WW_CACHE_TTL if chain == StoreChain.WOOLWORTHS else _CACHE_TTL
     if cached and cached[0] > time.time():
         return cached[1]
     if chain == StoreChain.WOOLWORTHS:
-        stores = woolworths_public.list_stores()
+        # One nationwide online option only when the catalogue answers from this host.
+        stores = await woolworths_public.list_stores_for_picker()
     elif chain == StoreChain.FRESHCHOICE:
         stores = await freshchoice.list_stores_async()
     elif chain in (StoreChain.NEW_WORLD, StoreChain.PAKNSAVE):
         stores = await foodstuffs.list_stores(chain)
     else:
         stores = []
-    _CACHE[chain] = (time.time() + _CACHE_TTL, stores)
+    _CACHE[chain] = (time.time() + ttl, stores)
     return stores
 
 
@@ -86,10 +92,22 @@ async def search_stores(query: str = "", chain: StoreChain | None = None, *, lim
     chains = [chain] if chain else None
     stores = await all_stores(chains=chains)
     q = query.strip().lower()
+    ww = [s for s in stores if s.chain == StoreChain.WOOLWORTHS]
+    rest = [s for s in stores if s.chain != StoreChain.WOOLWORTHS]
+
     if q:
-        scored = [(_search_score(s, q), s) for s in stores]
-        stores = [s for score, s in sorted(scored, key=lambda x: -x[0]) if score > 0]
-    # Never invent synthetic Woolworths localities — only real directory rows.
+        scored = [(_search_score(s, q), s) for s in rest]
+        rest = [s for score, s in sorted(scored, key=lambda x: -x[0]) if score > 0]
+        # WW is a single nationwide online catalogue — include it when WW is in scope.
+        if chain == StoreChain.WOOLWORTHS:
+            stores = ww
+        elif ww and ("woolworth" in q or "countdown" in q):
+            stores = ww + rest
+        else:
+            stores = rest
+    else:
+        stores = ww + rest
+
     stores = [s for s in stores if not s.id.startswith("woolworths:local:")]
     return stores[:limit]
 
@@ -101,9 +119,11 @@ async def get_store(store_id: str) -> StoreRef | None:
     except ValueError:
         return None
     if chain == StoreChain.WOOLWORTHS:
-        resolved = woolworths_public.resolve_store_id(store_id)
-        if resolved is not None:
-            return resolved
+        # Only resolve WW when the catalogue is usable from this host.
+        picker = await woolworths_public.list_stores_for_picker()
+        if not picker:
+            return None
+        return woolworths_public.resolve_store_id(store_id)
     stores = await _load_chain(chain)
     for store in stores:
         if store.id == store_id:

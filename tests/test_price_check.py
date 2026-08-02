@@ -188,12 +188,20 @@ def test_freshchoice_parse_products_from_search_html():
 
 
 @pytest.mark.asyncio
-async def test_christchurch_central_search_finds_nearby_chains():
+async def test_christchurch_central_search_finds_nearby_chains(monkeypatch):
+    from price_check import directory, woolworths_public
     from price_check.directory import search_stores
 
+    directory.clear_store_cache()
+    woolworths_public.reset_circuit_for_tests()
+
+    async def reachable():
+        return True
+
+    monkeypatch.setattr(woolworths_public, "catalogue_reachable", reachable)
     stores = await search_stores("Christchurch Central", limit=20)
     chains = {s.chain.value for s in stores}
-    assert "woolworths" in chains
+    # WW only appears when the query mentions Woolworths (nationwide online), or WW filter.
     assert "new_world" in chains
     assert "paknsave" in chains
     assert any("durham" in s.name.lower() for s in stores)
@@ -201,20 +209,53 @@ async def test_christchurch_central_search_finds_nearby_chains():
 
 
 @pytest.mark.asyncio
-async def test_woolworths_suburb_search_finds_ferrymead():
+async def test_woolworths_filter_offers_single_online_when_reachable(monkeypatch):
+    from price_check import directory, woolworths_public
     from price_check.directory import search_stores
     from price_check.models import StoreChain
 
+    directory.clear_store_cache()
+    woolworths_public.reset_circuit_for_tests()
+
+    async def reachable():
+        return True
+
+    monkeypatch.setattr(woolworths_public, "catalogue_reachable", reachable)
     stores = await search_stores("Ferrymead", StoreChain.WOOLWORTHS, limit=10)
-    assert stores
-    assert any("ferrymead" in s.name.lower() or "ferrymead" in s.suburb.lower() for s in stores)
+    assert len(stores) == 1
+    assert stores[0].id == "woolworths:online"
 
 
 @pytest.mark.asyncio
-async def test_woolworths_unknown_suburb_does_not_invent_store():
+async def test_woolworths_hidden_when_catalogue_unreachable(monkeypatch):
+    from price_check import directory, woolworths_public
     from price_check.directory import search_stores
     from price_check.models import StoreChain
 
+    directory.clear_store_cache()
+    woolworths_public.reset_circuit_for_tests()
+
+    async def unreachable():
+        return False
+
+    monkeypatch.setattr(woolworths_public, "catalogue_reachable", unreachable)
+    stores = await search_stores("Albany", StoreChain.WOOLWORTHS, limit=10)
+    assert stores == []
+
+
+@pytest.mark.asyncio
+async def test_woolworths_unknown_suburb_does_not_invent_store(monkeypatch):
+    from price_check import directory, woolworths_public
+    from price_check.directory import search_stores
+    from price_check.models import StoreChain
+
+    directory.clear_store_cache()
+    woolworths_public.reset_circuit_for_tests()
+
+    async def unreachable():
+        return False
+
+    monkeypatch.setattr(woolworths_public, "catalogue_reachable", unreachable)
     stores = await search_stores("Someobscureville", StoreChain.WOOLWORTHS, limit=5)
     assert stores == []
     assert not any(s.id.startswith("woolworths:local:") for s in stores)

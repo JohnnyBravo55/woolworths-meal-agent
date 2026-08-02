@@ -112,8 +112,13 @@ def filter_comparable_baskets(
     baskets: list[PriceCheckStoreBasket],
 ) -> tuple[list[PriceCheckStoreBasket], list[PriceCheckSkippedStore]]:
     """Drop stores with zero live matches — never compare invented estimate-only totals."""
+    from price_check.models import StoreChain
+    from price_check.woolworths_public import online_store
+
     kept: list[PriceCheckStoreBasket] = []
     skipped: list[PriceCheckSkippedStore] = []
+    ww_skip_count = 0
+    ww_reason = ""
     for basket in baskets:
         if basket.live_count > 0:
             kept.append(basket)
@@ -123,7 +128,22 @@ def filter_comparable_baskets(
         )
         if "not included" not in reason.lower():
             reason = f"{reason} Not included in comparison."
+        if basket.store.chain == StoreChain.WOOLWORTHS:
+            ww_skip_count += 1
+            ww_reason = reason
+            continue
         skipped.append(PriceCheckSkippedStore(store=basket.store, reason=reason))
+    if ww_skip_count:
+        # One message for WW — suburb picks were the same online catalogue.
+        label = online_store()
+        if ww_skip_count > 1:
+            reason = (
+                "Woolworths live catalogue isn't reachable from this server "
+                f"({ww_skip_count} selected). Not included in comparison."
+            )
+        else:
+            reason = ww_reason
+        skipped.insert(0, PriceCheckSkippedStore(store=label, reason=reason))
     return kept, skipped
 
 
