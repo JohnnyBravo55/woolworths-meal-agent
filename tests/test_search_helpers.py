@@ -76,6 +76,46 @@ def test_salmon_rejects_canned_brine():
     assert is_plausible_match("chilli flakes", "woolworths chilli flakes") is True
 
 
+def test_broccoli_rejects_broccolini_and_mixed_veg():
+    assert is_plausible_match("broccoli", "woolworths broccolini bag") is False
+    assert (
+        is_plausible_match(
+            "broccoli",
+            "woolworths frozen chunky mixed vegetables carrots, cauliflower, broccoli",
+        )
+        is False
+    )
+    assert is_plausible_match("broccoli", "woolworths fresh vegetable broccoli") is True
+
+
+def test_fresh_spinach_rejects_frozen():
+    assert is_plausible_match("fresh spinach", "woolworths frozen chopped spinach") is False
+    assert is_plausible_match("fresh spinach", "woolworths fresh salad baby spinach") is True
+
+
+def test_milk_rejects_uht():
+    assert is_plausible_match("milk", "woolworths milk standard uht") is False
+    assert is_plausible_match("milk", "woolworths milk standard") is True
+
+
+def test_taco_shells_reject_pasta_shells():
+    assert is_plausible_match("taco shells", "woolworths pasta large shells") is False
+    assert is_plausible_match("taco shells", "old el paso taco shells original") is True
+    assert is_plausible_match("taco shells", "old el paso tortilla shells") is True
+
+
+def test_lemon_rejects_juice_when_fresh_fruit_wanted():
+    assert is_plausible_match("lemon", "woolworths lemon juice") is False
+    assert is_plausible_match("lemons", "woolworths lemon juice 250ml") is False
+    assert is_plausible_match("lemon", "fresh fruit lemon") is True
+    assert is_plausible_match("lemon juice", "woolworths lemon juice") is True
+
+
+def test_soy_sauce_rejects_sweet_kecap_manis():
+    assert is_plausible_match("soy sauce", "abc sweet soy sauce kecap manis") is False
+    assert is_plausible_match("soy sauce", "kikkoman soy sauce") is True
+
+
 def test_capsicum_rejects_bean_snack_mix():
     assert is_plausible_match(
         "capsicum",

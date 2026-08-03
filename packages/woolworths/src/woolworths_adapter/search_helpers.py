@@ -401,9 +401,36 @@ def is_plausible_match(ingredient_name: str, product_name: str, brand: str = "")
         if "gluten free" in name or "gf" in name:
             return True
 
-    # Taco shells — must mention taco or tortilla shell
+    # Taco shells — must be taco/tortilla shells, not pasta shells
     if "taco shell" in ing or ing == "taco shells":
-        if any(x in name for x in ("taco", "tortilla", "shell")):
+        if any(x in name for x in ("pasta", "conchiglie", "jumbo shell", "large shell")):
+            return False
+        if "taco" in name:
+            return True
+        if "tortilla" in name and "shell" in name:
+            return True
+        return False
+
+    # Fresh lemon fruit — not juice / cordial / concentrate
+    if ing in ("lemon", "lemons", "lemon wedges") or ing.rstrip("s") == "lemon":
+        if any(
+            x in name
+            for x in (
+                "juice",
+                "cordial",
+                "concentrate",
+                "drink",
+                "squash",
+                "essence",
+                "extract",
+                "flavour",
+                "flavor",
+                "pepper",
+                "seasoning",
+            )
+        ):
+            return False
+        if "lemon" in name:
             return True
         return False
 
@@ -438,9 +465,27 @@ def is_plausible_match(ingredient_name: str, product_name: str, brand: str = "")
             return True
         return False
 
-    # Broccoli — prefer actual broccoli, not unrelated veg
+    # Broccoli — actual broccoli heads/florets, not broccolini or mixed veg bags
     if ing == "broccoli" or ing.endswith(" broccoli"):
-        if "broccoli" not in name and "broccolini" not in name:
+        if "broccolini" in name:
+            return False
+        if any(
+            x in name
+            for x in ("mixed", "medley", "stir fry", "stir-fry", "cauliflower", "carrot")
+        ):
+            return False
+        if "broccoli" not in name:
+            return False
+
+    # "Fresh X" ingredients should not match frozen products
+    if "fresh" in ing.split() and "frozen" in name:
+        return False
+
+    # Plain milk — prefer chilled dairy, not UHT / long-life cartons
+    if ing in ("milk", "fresh milk", "standard milk", "full cream milk"):
+        if any(x in name for x in ("uht", "long life", "longlife", "shelf stable", "shelf-stable")):
+            return False
+        if "milk" not in name:
             return False
 
     # Cocoa — not laundry powder
@@ -693,10 +738,13 @@ def is_plausible_match(ingredient_name: str, product_name: str, brand: str = "")
     elif "beef" in ing and "beef" not in name and "steak" not in name:
         return False
 
-    # Soy sauce must not match tomato sauce / ketchup
+    # Soy sauce must not match tomato sauce / ketchup / sweet kecap manis
     if "soy sauce" in ing or ing == "soy sauce":
         if "soy" not in name or "tomato" in name or "ketchup" in name:
             return False
+        if "sweet" not in ing and "kecap" not in ing:
+            if any(x in name for x in ("sweet soy", "kecap manis", "kecap")):
+                return False
 
     # Teriyaki should mention teriyaki or soy
     if "teriyaki" in ing and "teriyaki" not in name and "soy" not in name:

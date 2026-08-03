@@ -153,6 +153,10 @@ def test_score_rejects_cat_food_and_wrong_produce_matches():
     assert score_product_name("honey", "Arataki Clover Honey 250g") > 50
     assert score_product_name("lettuce", "NZ Iceberg Lettuce ea") > 50
     assert score_product_name("spinach", "Woolworths Fresh Vegetable Spinach 325g") > 50
+    assert score_product_name("spinach", "woolworths fresh salad baby spinach") > 50
+    assert score_product_name("fresh spinach", "woolworths frozen chopped spinach") == 0.0
+    assert score_product_name("lettuce", "woolworths fresh salad shredded lettuce mini bag") > 50
+    assert score_product_name("whole grain bread", "natures fresh toast bread multigrain") > 50
     assert score_product_name("rice", "Pams Long Grain White Rice 1kg") > 50
     assert score_product_name("parmesan cheese", "Dairyworks Grated Parmesan Cheese 200g") > 50
     assert score_product_name("honey", "WW Honey Cured Bacon Streaky 250g") == 0.0

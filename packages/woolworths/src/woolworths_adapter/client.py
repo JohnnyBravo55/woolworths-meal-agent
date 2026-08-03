@@ -253,32 +253,31 @@ class WoolworthsAdapter:
             raise WoolworthsError(f"Catalogue search failed for '{query}': {exc}") from exc
 
     async def search(self, query: str, limit: int = 10) -> list[ProductMatch]:
-        """Search products — prefer session cookies, fall back to public catalogue."""
-        size = min(max(1, limit), 48)
+        """Search products via public online catalogue (shop-list pricing).
+
+        Session cookies are store/account-scoped and can disagree with the
+        national online catalogue — keep cookies for cart/trolley only.
+        Falls back to a cookie-backed search only if the public API fails.
+        """
         try:
-            result = await self._http_get(
-                "/api/v1/products",
-                params={
-                    "target": "search",
-                    "search": query,
-                    "inStockProductsOnly": "false",
-                    "size": str(size),
-                },
-            )
-            return self._matches_from_products_payload(result, limit)
-        except WoolworthsError as exc:
-            if self.is_auth_failure(exc):
-                return await self.search_public_catalogue(query, limit=limit)
-            # No cookies / session client errors — still try public catalogue for pricing
+            return await self.search_public_catalogue(query, limit=limit)
+        except WoolworthsError as public_exc:
+            size = min(max(1, limit), 48)
             try:
-                return await self.search_public_catalogue(query, limit=limit)
-            except WoolworthsError:
-                raise exc from exc
-        except Exception as exc:
-            try:
-                return await self.search_public_catalogue(query, limit=limit)
-            except WoolworthsError:
-                raise WoolworthsError(f"Search failed for '{query}': {exc}") from exc
+                result = await self._http_get(
+                    "/api/v1/products",
+                    params={
+                        "target": "search",
+                        "search": query,
+                        "inStockProductsOnly": "false",
+                        "size": str(size),
+                    },
+                )
+                return self._matches_from_products_payload(result, limit)
+            except Exception as session_exc:
+                raise WoolworthsError(
+                    f"Search failed for '{query}': {public_exc}; session fallback: {session_exc}"
+                ) from public_exc
 
     @staticmethod
     def is_auth_failure(exc: BaseException) -> bool:
