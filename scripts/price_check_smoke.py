@@ -37,11 +37,12 @@ CHEF_ORDER = [
 ]
 
 # Imagine living in Christchurch Central — nearby branches with live catalogues.
+# WW is priced on the shop list (online catalogue), not in multi-store compare.
 CHCH_CENTRAL_STORES = [
-    "woolworths:christchurch",  # Woolworths Christchurch City
     "new_world:c1aaac72-38c0-4cc0-ad05-f241047d88c5",  # New World Durham Street
     "paknsave:61dd754e-8525-4b9e-9e08-173389eea8a8",  # PAK'nSAVE Moorhouse (Sydenham)
     "freshchoice:citymarket",  # FreshChoice Christchurch City Market
+    "paknsave:8cd700ae-d96f-4761-bd7a-805d6b93536d",  # PAK'nSAVE Papanui
 ]
 
 # Ingredient substring / product junk that usually means a wrong match.

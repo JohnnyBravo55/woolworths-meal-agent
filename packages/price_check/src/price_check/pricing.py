@@ -42,13 +42,27 @@ def parse_pack_kg(display: str, name: str = "") -> float | None:
     return None
 
 
-def is_weight_priced(sale_type: str | None, sku: str = "", display: str = "") -> bool:
+def is_weight_priced(
+    sale_type: str | None,
+    sku: str = "",
+    display: str = "",
+    product_name: str = "",
+) -> bool:
     if (sale_type or "").upper() == "WEIGHT":
         return True
     sku_u = (sku or "").upper()
     if "-KGM-" in sku_u or sku_u.endswith("-KGM") or sku_u.endswith("KGM"):
         return True
-    return (display or "").strip().lower() in {"kg", "kilogram", "kilograms"}
+    disp = (display or "").strip().lower()
+    if disp in {"kg", "kilogram", "kilograms"}:
+        return True
+    blob = f"{display} {product_name}".lower()
+    # FreshChoice often labels loose produce as "Approx. N units per kg".
+    if re.search(r"\bper\s*kg\b", blob) or re.search(r"\b/\s*kg\b", blob):
+        return True
+    if "units per kg" in blob or "unit per kg" in blob:
+        return True
+    return False
 
 
 def needed_kg(
@@ -115,7 +129,22 @@ def price_purchase(
     if unit_price <= 0:
         return 1.0, "each", 0.0
 
-    weight_priced = is_weight_priced(sale_type, sku=sku, display=display)
+    weight_priced = is_weight_priced(
+        sale_type, sku=sku, display=display, product_name=product_name
+    )
+    # FreshChoice often shows loose meat as $/kg with no "per kg" size text.
+    pack_kg_hint = parse_pack_kg(display, product_name)
+    if (
+        not weight_priced
+        and not pack_kg_hint
+        and unit_price >= 18.0
+        and any(p in ingredient.lower() for p in _PROTEIN_EACH_KG)
+        and any(
+            w in f"{product_name} {display}".lower()
+            for w in ("fillet", "fillets", "thigh", "thighs", "breast", "mince", "steak")
+        )
+    ):
+        weight_priced = True
     if weight_priced:
         kg = needed_kg(ingredient, quantity, unit, household_size=household_size)
         return kg, "kg", round(unit_price * kg, 2)
@@ -153,7 +182,10 @@ def pick_best_priced_product(
     for cand in candidates:
         name = str(cand.get("name") or "")
         brand = str(cand.get("brand") or "")
-        score = float(score_fn(ingredient, name, brand))
+        size = str(cand.get("display") or cand.get("size") or "")
+        # Include size so rejects like "400mL" / "per kg" apply.
+        score_name = " ".join(x for x in (name, size) if x).strip() or name
+        score = float(score_fn(ingredient, score_name, brand))
         if score <= 0:
             continue
         unit_price = float(cand.get("unit_price") or 0)
@@ -181,6 +213,7 @@ def pick_best_priced_product(
             str(cand.get("saleType") or ""),
             sku=str(cand.get("sku") or ""),
             display=str(cand.get("display") or ""),
+            product_name=name,
         ):
             pack_bonus = 0.5
         scored.append((total - pack_bonus, -score, cand))

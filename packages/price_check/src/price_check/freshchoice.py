@@ -240,7 +240,18 @@ async def match_line(
                 continue
             seen.add(key)
             size = str(item.get("size") or "")
-            sale_type = "WEIGHT" if size.strip().lower() in {"kg", "kilogram"} else "UNITS"
+            name = str(item.get("name") or "")
+            blob = f"{size} {name}".lower()
+            sale_type = (
+                "WEIGHT"
+                if (
+                    size.strip().lower() in {"kg", "kilogram", "kilograms"}
+                    or "per kg" in blob
+                    or "units per kg" in blob
+                    or "/kg" in blob
+                )
+                else "UNITS"
+            )
             products.append({**item, "display": size, "saleType": sale_type})
         if pick_best_product(ingredient, products):
             break

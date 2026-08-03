@@ -1,7 +1,7 @@
 """Tests for price-check purchase quantity math."""
 
 from price_check.matching import score_product_name
-from price_check.pricing import needed_kg, price_purchase
+from price_check.pricing import is_weight_priced, needed_kg, price_purchase
 
 
 def test_fillets_each_not_multiplied_as_kg():
@@ -62,3 +62,38 @@ def test_salmon_does_not_match_mackerel_fillets():
 
 def test_tenderbasted_thigh_packs_allowed():
     assert score_product_name("chicken thighs", "Tender Basted Chicken Thighs", "Pams") > 0
+
+
+def test_freshchoice_per_kg_courgette_not_charged_as_each():
+    assert is_weight_priced(
+        "UNITS",
+        display="Approx. 6 units per kg",
+        product_name="Courgettes (Approx. 6 units per kg)",
+    )
+    qty, unit, total = price_purchase(
+        ingredient="zucchini",
+        quantity=1,
+        unit="each",
+        unit_price=21.99,
+        sale_type="UNITS",
+        display="Approx. 6 units per kg",
+        product_name="Courgettes (Approx. 6 units per kg)",
+        household_size=2,
+    )
+    assert unit == "kg"
+    assert total < 12  # was wrongly $21.99 as 1 each
+
+
+def test_loose_chicken_breast_high_unit_price_treated_as_per_kg():
+    qty, unit, total = price_purchase(
+        ingredient="chicken breast",
+        quantity=1,
+        unit="each",
+        unit_price=21.99,
+        sale_type="UNITS",
+        display="",
+        product_name="Chicken Breast Fillets Skin Off",
+        household_size=2,
+    )
+    assert unit == "kg"
+    assert total < 12  # was wrongly $21.99 as 1 each
