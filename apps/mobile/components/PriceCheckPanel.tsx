@@ -25,7 +25,6 @@ import { api } from "@/lib/api";
 
 const CHAINS: { id: StoreChain | ""; label: string }[] = [
   { id: "", label: "All" },
-  { id: "woolworths", label: "Woolworths" },
   { id: "paknsave", label: "Pak'nSave" },
   { id: "new_world", label: "New World" },
   { id: "freshchoice", label: "FreshChoice" },
@@ -178,8 +177,8 @@ export function PriceCheckPanel() {
       <CardHeader>
         <H2>Compare & shop stores</H2>
         <Text style={styles.sub}>
-          Login-free prices for local branches. Then shop with Open / Search links — you add items in
-          the store site (no silent cart for New World, Pak'nSave, or FreshChoice).
+          Compare against your Woolworths shop-list total. Login-free prices for local branches — open
+          Search links to add items yourself (no silent cart for New World, Pak'nSave, or FreshChoice).
         </Text>
         <Button
           title={open ? "Hide price check" : "Run price check"}

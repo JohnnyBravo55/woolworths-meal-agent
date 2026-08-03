@@ -121,6 +121,50 @@ def test_score_product_name_rejects_pork_blend_for_beef_mince():
     assert score_product_name("beef mince", "NZ Premium Beef Mince kg") > 50
 
 
+def test_score_rejects_cat_food_and_wrong_produce_matches():
+    assert score_product_name("beef mince", "Pams Mince With Beef In Gravy Cat Food 700g") == 0.0
+    assert score_product_name("chicken thighs", "Tegel Free Range Fresh Chicken Breast Small Fillet kg") == 0.0
+    assert score_product_name("capsicum", "Pams Diced Tomatoes With Capsicum And Onion 400g") == 0.0
+    assert score_product_name("capsicum", "Edgell Snack Time Red Kidney Beans, Corn & Roasted Capsicum 70g") == 0.0
+    assert score_product_name("cheese", "Savoury Mince & Cheese") == 0.0
+    assert score_product_name("honey", "Kang Shi Fu Jasmine Tea Honey 500mL") == 0.0
+    assert score_product_name("lettuce", "Sandwich Club Egg, Ham & Lettuce") == 0.0
+    assert (
+        score_product_name(
+            "cucumber", "Sandwich Club Cheese, Lettuce, Carrot & Cucumber VEGETARIAN"
+        )
+        == 0.0
+    )
+    assert score_product_name("cucumber", "Sun Harvest Cucumbers Bread & Butter 500g") == 0.0
+    assert score_product_name("cucumber", "Telegraph Cucumber ea") > 50
+    assert (
+        score_product_name(
+            "spinach", "Mother Earth Spinach Apple Blueberry & Banana Vege Fruit Sticks 152g"
+        )
+        == 0.0
+    )
+    assert score_product_name("spinach", "Breads of Europe Spinach Roll") == 0.0
+    assert score_product_name("rice", "Trident Rice Noodles Pho Chicken Rice 50g") == 0.0
+    assert score_product_name("parmesan cheese", "Dairyworks Mozzarella Grated Cheese 100g") == 0.0
+    # Still accept sensible SKUs
+    assert score_product_name("beef mince", "Harris Meats Beef Prime Mince 500g") > 50
+    assert score_product_name("chicken thighs", "Macro Free Range Chicken Thigh Fillets 400g") > 50
+    assert score_product_name("capsicum", "Red Capsicum ea") > 50
+    assert score_product_name("honey", "Arataki Clover Honey 250g") > 50
+    assert score_product_name("lettuce", "NZ Iceberg Lettuce ea") > 50
+    assert score_product_name("spinach", "Woolworths Fresh Vegetable Spinach 325g") > 50
+    assert score_product_name("rice", "Pams Long Grain White Rice 1kg") > 50
+    assert score_product_name("parmesan cheese", "Dairyworks Grated Parmesan Cheese 200g") > 50
+    assert score_product_name("honey", "WW Honey Cured Bacon Streaky 250g") == 0.0
+    assert score_product_name("cream", "Lamingtons Creamed Mini") == 0.0
+    assert score_product_name("cream", "Woolworths Cream Fresh 300mL") > 50
+    assert score_product_name("cherry tomatoes", "John West Tuna Cherry Tomato & Chilli 90g") == 0.0
+    assert score_product_name("spinach", "Farrah's Wraps Garden Spinach 6pk") == 0.0
+    assert score_product_name("spinach", "Ww Spinach & Ricotta Tortellini 300g") == 0.0
+    assert score_product_name("honey", "Palmolive Naturals Hand Wash Refill Milk & Honey 1L") == 0.0
+    assert score_product_name("cucumber", "Pupple Bubble Tea Aloe Vera & Cucumber 400mL") == 0.0
+
+
 def test_score_product_name_accepts_courgette_for_zucchini():
     assert score_product_name("zucchini", "Imported Courgettes") > 50
     assert score_product_name("zucchini", "Organic Pumpkin Kumara & Courgette With Quinoa 6+ Months Pureed") == 0.0
@@ -188,20 +232,14 @@ def test_freshchoice_parse_products_from_search_html():
 
 
 @pytest.mark.asyncio
-async def test_christchurch_central_search_finds_nearby_chains(monkeypatch):
-    from price_check import directory, woolworths_public
+async def test_christchurch_central_search_finds_nearby_chains():
+    from price_check import directory
     from price_check.directory import search_stores
 
     directory.clear_store_cache()
-    woolworths_public.reset_circuit_for_tests()
-
-    async def reachable():
-        return True
-
-    monkeypatch.setattr(woolworths_public, "catalogue_reachable", reachable)
     stores = await search_stores("Christchurch Central", limit=20)
     chains = {s.chain.value for s in stores}
-    # WW only appears when the query mentions Woolworths (nationwide online), or WW filter.
+    assert "woolworths" not in chains
     assert "new_world" in chains
     assert "paknsave" in chains
     assert any("durham" in s.name.lower() for s in stores)
@@ -209,56 +247,16 @@ async def test_christchurch_central_search_finds_nearby_chains(monkeypatch):
 
 
 @pytest.mark.asyncio
-async def test_woolworths_filter_offers_single_online_when_reachable(monkeypatch):
-    from price_check import directory, woolworths_public
+async def test_woolworths_excluded_from_compare_picker():
+    from price_check import directory
     from price_check.directory import search_stores
     from price_check.models import StoreChain
 
     directory.clear_store_cache()
-    woolworths_public.reset_circuit_for_tests()
-
-    async def reachable():
-        return True
-
-    monkeypatch.setattr(woolworths_public, "catalogue_reachable", reachable)
-    stores = await search_stores("Ferrymead", StoreChain.WOOLWORTHS, limit=10)
-    assert len(stores) == 1
-    assert stores[0].id == "woolworths:online"
-
-
-@pytest.mark.asyncio
-async def test_woolworths_hidden_when_catalogue_unreachable(monkeypatch):
-    from price_check import directory, woolworths_public
-    from price_check.directory import search_stores
-    from price_check.models import StoreChain
-
-    directory.clear_store_cache()
-    woolworths_public.reset_circuit_for_tests()
-
-    async def unreachable():
-        return False
-
-    monkeypatch.setattr(woolworths_public, "catalogue_reachable", unreachable)
-    stores = await search_stores("Albany", StoreChain.WOOLWORTHS, limit=10)
-    assert stores == []
-
-
-@pytest.mark.asyncio
-async def test_woolworths_unknown_suburb_does_not_invent_store(monkeypatch):
-    from price_check import directory, woolworths_public
-    from price_check.directory import search_stores
-    from price_check.models import StoreChain
-
-    directory.clear_store_cache()
-    woolworths_public.reset_circuit_for_tests()
-
-    async def unreachable():
-        return False
-
-    monkeypatch.setattr(woolworths_public, "catalogue_reachable", unreachable)
-    stores = await search_stores("Someobscureville", StoreChain.WOOLWORTHS, limit=5)
-    assert stores == []
-    assert not any(s.id.startswith("woolworths:local:") for s in stores)
+    assert await search_stores("Ferrymead", StoreChain.WOOLWORTHS, limit=10) == []
+    assert await search_stores("", StoreChain.WOOLWORTHS, limit=10) == []
+    all_stores = await search_stores("", limit=40)
+    assert all(s.chain != StoreChain.WOOLWORTHS for s in all_stores)
 
 
 @pytest.mark.asyncio

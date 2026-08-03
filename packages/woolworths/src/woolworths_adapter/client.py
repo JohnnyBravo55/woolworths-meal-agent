@@ -189,9 +189,73 @@ class WoolworthsAdapter:
             cup_measure=raw.get("cup_measure"),
         )
 
-    async def search(self, query: str, limit: int = 10) -> list[ProductMatch]:
+    def _matches_from_products_payload(self, result: dict[str, Any], limit: int) -> list[ProductMatch]:
+        matches: list[ProductMatch] = []
+        for item in result.get("products", {}).get("items", []):
+            if item.get("type") != "Product":
+                continue
+            try:
+                raw = {
+                    "name": item.get("name") or "",
+                    "brand": item.get("brand") or "",
+                    "sku": str(item.get("sku", "")),
+                    "price": item.get("price", {}).get("originalPrice", 0),
+                    "sale_price": item.get("price", {}).get("salePrice"),
+                    "is_special": item.get("price", {}).get("isSpecial", False),
+                    "unit": item.get("unit", "Each"),
+                    "size": item.get("size", {}).get("volumeSize", ""),
+                    "cup_price": item.get("size", {}).get("cupPrice"),
+                    "cup_measure": item.get("size", {}).get("cupMeasure"),
+                    "in_stock": item.get("availabilityStatus") == "In Stock",
+                    "category": (
+                        (item.get("departments") or [{}])[0].get("name", "")
+                        if item.get("departments")
+                        else item.get("breadcrumb", {}).get("department", {}).get("name", "")
+                    ),
+                }
+                match = self._to_match(raw)
+                if match.sku and match.product_name:
+                    matches.append(match)
+            except Exception:
+                continue
+        return matches[:limit]
+
+    async def search_public_catalogue(self, query: str, limit: int = 10) -> list[ProductMatch]:
+        """Login-free Woolworths NZ online catalogue search (shop-list pricing)."""
+        import httpx
+
+        size = min(max(1, limit), 48)
+        headers = {
+            "User-Agent": (
+                "Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 "
+                "(KHTML, like Gecko) Chrome/120.0.0.0 Safari/537.36"
+            ),
+            "Accept": "application/json",
+            "x-requested-with": "OnlineShopping_Web",
+            "Origin": WOOLWORTHS_BASE_URL,
+            "Referer": f"{WOOLWORTHS_BASE_URL}/",
+        }
         try:
-            size = min(max(1, limit), 48)
+            async with httpx.AsyncClient(timeout=20.0, follow_redirects=True) as client:
+                resp = await client.get(
+                    f"{WOOLWORTHS_BASE_URL}/api/v1/products",
+                    params={
+                        "target": "search",
+                        "search": query,
+                        "inStockProductsOnly": "false",
+                        "size": str(size),
+                    },
+                    headers=headers,
+                )
+                resp.raise_for_status()
+                return self._matches_from_products_payload(resp.json(), limit)
+        except Exception as exc:
+            raise WoolworthsError(f"Catalogue search failed for '{query}': {exc}") from exc
+
+    async def search(self, query: str, limit: int = 10) -> list[ProductMatch]:
+        """Search products — prefer session cookies, fall back to public catalogue."""
+        size = min(max(1, limit), 48)
+        try:
             result = await self._http_get(
                 "/api/v1/products",
                 params={
@@ -201,39 +265,20 @@ class WoolworthsAdapter:
                     "size": str(size),
                 },
             )
-            matches: list[ProductMatch] = []
-            for item in result.get("products", {}).get("items", []):
-                if item.get("type") != "Product":
-                    continue
-                try:
-                    raw = {
-                        "name": item.get("name") or "",
-                        "brand": item.get("brand") or "",
-                        "sku": str(item.get("sku", "")),
-                        "price": item.get("price", {}).get("originalPrice", 0),
-                        "sale_price": item.get("price", {}).get("salePrice"),
-                        "is_special": item.get("price", {}).get("isSpecial", False),
-                        "unit": item.get("unit", "Each"),
-                        "size": item.get("size", {}).get("volumeSize", ""),
-                        "cup_price": item.get("size", {}).get("cupPrice"),
-                        "cup_measure": item.get("size", {}).get("cupMeasure"),
-                        "in_stock": item.get("availabilityStatus") == "In Stock",
-                        "category": (
-                            (item.get("departments") or [{}])[0].get("name", "")
-                            if item.get("departments")
-                            else item.get("breadcrumb", {}).get("department", {}).get("name", "")
-                        ),
-                    }
-                    match = self._to_match(raw)
-                    if match.sku and match.product_name:
-                        matches.append(match)
-                except Exception:
-                    continue
-            return matches[:limit]
-        except WoolworthsError:
-            raise
+            return self._matches_from_products_payload(result, limit)
+        except WoolworthsError as exc:
+            if self.is_auth_failure(exc):
+                return await self.search_public_catalogue(query, limit=limit)
+            # No cookies / session client errors — still try public catalogue for pricing
+            try:
+                return await self.search_public_catalogue(query, limit=limit)
+            except WoolworthsError:
+                raise exc from exc
         except Exception as exc:
-            raise WoolworthsError(f"Search failed for '{query}': {exc}") from exc
+            try:
+                return await self.search_public_catalogue(query, limit=limit)
+            except WoolworthsError:
+                raise WoolworthsError(f"Search failed for '{query}': {exc}") from exc
 
     @staticmethod
     def is_auth_failure(exc: BaseException) -> bool:

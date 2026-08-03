@@ -12,7 +12,6 @@ import { Button } from "./ui/Button";
 import { Card, CardBody, CardHeader } from "./ui/Card";
 
 const CHAINS: { id: StoreChain; label: string }[] = [
-  { id: "woolworths", label: "Woolworths" },
   { id: "paknsave", label: "Pak'nSave" },
   { id: "new_world", label: "New World" },
   { id: "freshchoice", label: "FreshChoice" },
@@ -172,7 +171,8 @@ export function PriceCheckPanel() {
         <div>
           <h3 className="font-semibold">Compare & shop stores</h3>
           <p className="text-sm text-slate-600">
-            Login-free prices, then Open / Search on the store site. You add items yourself — no silent
+            Compare against your Woolworths shop-list total. Login-free prices, then Open / Search on
+            the store site. You add items yourself — no silent
             cart for New World, Pak&apos;nSave, or FreshChoice.
           </p>
         </div>

@@ -835,11 +835,9 @@ async def shop_resolve(
 
     orch = session.orchestrator
     ww_user = _woolworths_user_id(session, user)
-    with woolworths_session_context(ww_user):
-        if await orch.adapter.is_session_available():
-            orch.resolver.offline_mode = False
-        else:
-            orch.resolver.offline_mode = True
+    # Shop-list pricing always uses the Woolworths online catalogue (login-free).
+    # Session cookies are only required later for add-to-cart.
+    orch.resolver.offline_mode = False
 
     if session.state.resolved_list and not force:
 
@@ -899,17 +897,14 @@ async def shop_resolve(
 
     async def stream():
         with woolworths_session_context(ww_user):
-            if orch.resolver.offline_mode:
-                yield _sse_event(
-                    "status",
-                    {
-                        "message": "Using estimated prices — sign in at Add to cart for live Woolworths search",
-                        "total": total,
-                        "done": 0,
-                    },
-                )
-            else:
-                yield _sse_event("status", {"message": "Searching Woolworths…", "total": total, "done": 0})
+            yield _sse_event(
+                "status",
+                {
+                    "message": "Searching Woolworths online catalogue…",
+                    "total": total,
+                    "done": 0,
+                },
+            )
             items = []
             unresolved = []
             for idx, ingredient in enumerate(ingredients, start=1):
@@ -1213,7 +1208,7 @@ async def stores_search(q: str = "", chain: str | None = None, limit: int = 40):
         except ValueError as exc:
             raise HTTPException(
                 status_code=400,
-                detail="chain must be woolworths|paknsave|new_world|freshchoice",
+                detail="chain must be paknsave|new_world|freshchoice",
             ) from exc
     stores = await search_stores(q, chain_enum, limit=max(1, min(limit, 100)))
     return {"stores": [s.model_dump(mode="json") for s in stores]}
