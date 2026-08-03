@@ -57,7 +57,7 @@ export interface Meal {
   day_label: string;
   description: string;
   prep_time_minutes: number;
-  ingredients: { name: string; quantity: number; unit: string }[];
+  ingredients: { name: string; quantity: number; unit: string; is_pantry?: boolean }[];
   steps: string[];
 }
 
@@ -106,6 +106,7 @@ export interface AppState {
   profile: unknown | null;
   meal_plan: MealPlan | null;
   resolved_list: ResolvedGroceryList | null;
+  pantry_to_buy?: string[];
   plan_approved: boolean;
   products_approved: boolean;
   cart_attempted: boolean;

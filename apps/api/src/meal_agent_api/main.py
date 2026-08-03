@@ -36,6 +36,7 @@ from meal_agent_api.schemas import (
     ImportWoolworthsCookiesRequest,
     NdaAcceptRequest,
     WoolworthsLoginRequest,
+    PantryToBuyRequest,
     PriceCheckRequestBody,
     ProfileSaveRequest,
     RegeneratePlanRequest,
@@ -780,6 +781,7 @@ async def plan_swap(body: SwapMealRequest, session: AgentSession = Depends(get_s
     new_plan = session.orchestrator.planner.swap_meal(plan, body.meal_index, profile)
     session.state.meal_plan = new_plan
     session.state.resolved_list = None
+    session.state.pantry_to_buy = []
     session.budget_suggestions = []
     session.state.products_approved = False
     return {"meal_plan": new_plan, "state": StateResponse.from_session(session)}
@@ -804,6 +806,7 @@ async def plan_regenerate(
         raise HTTPException(status_code=502, detail=str(exc)) from exc
     session.state.meal_plan = new_plan
     session.state.resolved_list = None
+    session.state.pantry_to_buy = []
     session.budget_suggestions = []
     session.state.products_approved = False
     return {"meal_plan": new_plan, "state": StateResponse.from_session(session)}
@@ -820,6 +823,28 @@ async def download_recipes(session: AgentSession = Depends(get_session)):
         media_type="text/markdown; charset=utf-8",
         headers={"Content-Disposition": 'attachment; filename="recipes.md"'},
     )
+
+
+@app.post("/api/pantry/to-buy")
+async def set_pantry_to_buy(
+    body: PantryToBuyRequest,
+    session: AgentSession = Depends(get_session),
+):
+    seen: set[str] = set()
+    items: list[str] = []
+    for raw in body.items:
+        name = (raw or "").strip().lower()
+        if not name or name in seen:
+            continue
+        seen.add(name)
+        items.append(name)
+    previous = list(session.state.pantry_to_buy or [])
+    if items != previous:
+        session.state.resolved_list = None
+        session.state.products_approved = False
+        session.budget_suggestions = []
+    session.state.pantry_to_buy = items
+    return {"pantry_to_buy": items, "state": StateResponse.from_session(session)}
 
 
 # --- Shop ---
@@ -873,7 +898,9 @@ async def shop_resolve(
 
         return _sse_response(cached_stream())
 
-    ingredients = build_shopping_ingredients(plan.meals, profile)
+    ingredients = build_shopping_ingredients(
+        plan.meals, profile, pantry_to_buy=list(session.state.pantry_to_buy or [])
+    )
     plan.shared_ingredients = ingredients
     # Resolve proteins early — perishable search results flake more under load
     _protein_first = (
@@ -1091,16 +1118,21 @@ async def shop_resolve(
                 )
 
             items = await audit_task
-            items, heal_issues = heal_resolved_coverage(plan.meals, items, profile)
+            buy = list(session.state.pantry_to_buy or [])
+            items, heal_issues = heal_resolved_coverage(
+                plan.meals, items, profile, pantry_to_buy=buy
+            )
             items = await audit_resolved_list(
                 items, profile, adapter=None, meal_plan=plan
             )
             coverage_issues: list[str] = list(heal_issues)
-            for issue in audit_shop_coverage(plan.meals, ingredients, profile):
+            for issue in audit_shop_coverage(plan.meals, ingredients, profile, pantry_to_buy=buy):
                 msg = format_coverage_issue(issue)
                 if msg not in coverage_issues:
                     coverage_issues.append(msg)
-            for message in audit_resolved_shop_coverage(plan.meals, items, profile):
+            for message in audit_resolved_shop_coverage(
+                plan.meals, items, profile, pantry_to_buy=buy
+            ):
                 if message not in coverage_issues:
                     coverage_issues.append(message)
             resolved = resolved.model_copy(

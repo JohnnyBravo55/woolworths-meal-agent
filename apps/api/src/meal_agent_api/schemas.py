@@ -177,11 +177,16 @@ def cart_result_out(result, export_paths: list[str]) -> CartResultOut:
     )
 
 
+class PantryToBuyRequest(BaseModel):
+    items: list[str] = Field(default_factory=list)
+
+
 class StateResponse(BaseModel):
     phase: AgentPhase
     profile: UserProfile | None
     meal_plan: MealPlan | None
     resolved_list: ResolvedGroceryList | None
+    pantry_to_buy: list[str] = Field(default_factory=list)
     plan_approved: bool
     products_approved: bool
     cart_attempted: bool
@@ -199,6 +204,7 @@ class StateResponse(BaseModel):
             profile=s.profile,
             meal_plan=s.meal_plan,
             resolved_list=s.resolved_list,
+            pantry_to_buy=list(getattr(s, "pantry_to_buy", None) or []),
             plan_approved=s.plan_approved,
             products_approved=s.products_approved,
             cart_attempted=s.cart_attempted,

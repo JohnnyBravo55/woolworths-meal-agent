@@ -285,6 +285,12 @@ export function createApiClient(config: ApiClientConfig) {
 
     approveShop: () => jsonFetch<{ state: AppState }>("/api/shop/approve", { method: "POST" }),
 
+    setPantryToBuy: (items: string[]) =>
+      jsonFetch<{ pantry_to_buy: string[]; state: AppState }>("/api/pantry/to-buy", {
+        method: "POST",
+        body: JSON.stringify({ items }),
+      }),
+
     searchStores: (opts?: { q?: string; chain?: StoreChain; limit?: number }) => {
       const params = new URLSearchParams();
       if (opts?.q) params.set("q", opts.q);
