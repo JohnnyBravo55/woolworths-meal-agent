@@ -68,7 +68,7 @@ PROJECT_ROOT = Path(__file__).resolve().parents[4]
 PROFILES_DIR = PROJECT_ROOT / "profiles"
 load_dotenv(PROJECT_ROOT / ".env")
 
-app = FastAPI(title="Woolworths Meal Agent API", version="0.1.0")
+app = FastAPI(title="Meal Agent API", version="0.1.0")
 
 _DEFAULT_CORS_ORIGINS = [
     "http://localhost:5173",

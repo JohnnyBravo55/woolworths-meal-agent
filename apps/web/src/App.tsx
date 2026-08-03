@@ -17,6 +17,7 @@ import {
   loadProfile,
   regeneratePlan,
   saveProfile,
+  setPantryToBuy,
   setProfile,
   startSession,
   streamSSE,
@@ -96,6 +97,22 @@ export default function App() {
   const [planChefId, setPlanChefId] = useState<string | null>(null);
   const [furthestStep, setFurthestStep] = useState(0);
   const [sessionBaseline, setSessionBaseline] = useState<DiscoveryAnswers | null>(null);
+  const [pantryToBuy, setPantryToBuyState] = useState<string[]>([]);
+
+  const pantryItems = (() => {
+    const seen = new Set<string>();
+    const ordered: string[] = [];
+    for (const meal of meals) {
+      for (const ing of meal.ingredients) {
+        if (!ing.is_pantry) continue;
+        const name = ing.name.trim().toLowerCase();
+        if (!name || seen.has(name)) continue;
+        seen.add(name);
+        ordered.push(name);
+      }
+    }
+    return ordered;
+  })();
 
   const markStepReached = useCallback((next: number) => {
     setFurthestStep((prev) => Math.max(prev, next));
@@ -105,6 +122,7 @@ export default function App() {
     setMealPlan(null);
     setMeals([]);
     setShopList(null);
+    setPantryToBuyState([]);
     setPlanChefId(null);
     setSessionBaseline(null);
     setFurthestStep(1);
@@ -113,6 +131,7 @@ export default function App() {
   const resetDownstreamFromPlan = useCallback(() => {
     setMeals([]);
     setShopList(null);
+    setPantryToBuyState([]);
     setFurthestStep(2);
   }, []);
 
@@ -158,6 +177,7 @@ export default function App() {
         setAppState(state);
         if (state.meal_plan) setMealPlan(state.meal_plan);
         if (state.resolved_list) setShopList(state.resolved_list as ResolvedGroceryList);
+        setPantryToBuyState([...(state.pantry_to_buy || [])]);
         const profile = state.profile as { chef_id?: string; lunch_mode?: string } | null;
         if (profile?.chef_id) {
           setSelectedChefId(profile.chef_id);
@@ -340,8 +360,19 @@ export default function App() {
       return;
     }
     setError("");
+    try {
+      await setPantryToBuy(pantryToBuy);
+    } catch (e) {
+      setError(e instanceof Error ? e.message : "Could not save pantry ticks");
+      return;
+    }
     // Web: no Connect Woolworths gate — shop list builds without a session.
     await runResolve(force);
+  };
+
+  const handlePantryToBuyChange = (items: string[]) => {
+    setPantryToBuyState(items);
+    setShopList(null);
   };
 
   const handleApproveShop = async () => {
@@ -390,7 +421,7 @@ export default function App() {
         <div className="mx-auto max-w-6xl px-4 py-4">
           <div className="flex flex-wrap items-center justify-between gap-3">
             <div>
-              <h1 className="text-xl font-bold text-slate-900">Woolworths Meal Agent</h1>
+              <h1 className="text-xl font-bold text-slate-900">Meal Agent</h1>
               <MobileStepper current={step} />
             </div>
             <div className="flex flex-wrap items-center gap-2">
@@ -536,6 +567,9 @@ export default function App() {
             />
             <RecipesStep
             meals={meals}
+            pantryItems={pantryItems}
+            pantryToBuy={pantryToBuy}
+            onPantryToBuyChange={handlePantryToBuyChange}
             onContinue={() => handleResolve(false)}
             onRefreshSearch={() => handleResolve(true)}
             hasCachedList={!!shopList}

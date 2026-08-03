@@ -86,7 +86,7 @@ export function AccessCodeGate({ children }: { children: React.ReactNode }) {
   return (
     <View style={styles.center}>
       <View style={styles.card}>
-        <Text style={styles.title}>Woolworths Meal Agent</Text>
+        <Text style={styles.title}>Meal Agent</Text>
         <Text style={styles.subtitle}>Enter the tester access code to continue.</Text>
         <TextInput
           style={styles.input}

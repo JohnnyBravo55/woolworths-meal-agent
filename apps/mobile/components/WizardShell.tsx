@@ -49,7 +49,7 @@ export function WizardShell({ children, scrollable = true }: WizardShellProps) {
     <SafeAreaView style={styles.safe}>
       <View style={[styles.header, isWeb && webLayout?.header]}>
         <View style={isWeb ? webLayout?.page : undefined}>
-          <Text style={[styles.title, isWeb && webLayout?.title]}>Woolworths Meal Agent</Text>
+          <Text style={[styles.title, isWeb && webLayout?.title]}>Meal Agent</Text>
           {isWeb ? (
             <Text style={styles.hostedHint}>Supermarket cart fill — coming soon</Text>
           ) : (

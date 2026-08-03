@@ -336,17 +336,6 @@ export default function DiscoveryScreen() {
               accessibilityLabel="Mandatory items"
             />
           </Field>
-          <Field label="Already in pantry (comma-separated)">
-            <TextInput
-              style={styles.input}
-              value={answers.pantry_items}
-              onChangeText={(t) => set({ pantry_items: t })}
-              placeholder="olive oil, rice, soy sauce"
-              placeholderTextColor={theme.placeholder}
-              testID="discovery-pantry"
-              accessibilityLabel="Already in pantry"
-            />
-          </Field>
           <Field label="Likes (comma-separated)">
             <TextInput
               style={styles.input}

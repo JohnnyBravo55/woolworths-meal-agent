@@ -28,6 +28,8 @@ interface AppContextValue {
   setMeals: React.Dispatch<React.SetStateAction<Meal[]>>;
   shopList: ResolvedGroceryList | null;
   setShopList: React.Dispatch<React.SetStateAction<ResolvedGroceryList | null>>;
+  pantryToBuy: string[];
+  setPantryToBuy: React.Dispatch<React.SetStateAction<string[]>>;
   cartResult: CartResult | null;
   setCartResult: React.Dispatch<React.SetStateAction<CartResult | null>>;
   chefs: ChefPersona[];
@@ -71,6 +73,7 @@ export function AppProvider({ children }: { children: React.ReactNode }) {
   const [mealPlan, setMealPlan] = useState<MealPlan | null>(null);
   const [meals, setMeals] = useState<Meal[]>([]);
   const [shopList, setShopList] = useState<ResolvedGroceryList | null>(null);
+  const [pantryToBuy, setPantryToBuy] = useState<string[]>([]);
   const [cartResult, setCartResult] = useState<CartResult | null>(null);
   const [chefs, setChefs] = useState<ChefPersona[]>([]);
   const [premiumUnlocked, setPremiumUnlocked] = useState(true);
@@ -105,6 +108,7 @@ export function AppProvider({ children }: { children: React.ReactNode }) {
     setMealPlan(null);
     setMeals([]);
     setShopList(null);
+    setPantryToBuy([]);
     setCartResult(null);
     setPlanChefId(null);
     setSessionBaseline(null);
@@ -114,6 +118,7 @@ export function AppProvider({ children }: { children: React.ReactNode }) {
   const resetDownstreamFromPlan = useCallback(() => {
     setMeals([]);
     setShopList(null);
+    setPantryToBuy([]);
     setCartResult(null);
     setFurthestStep(2);
   }, []);
@@ -148,6 +153,7 @@ export function AppProvider({ children }: { children: React.ReactNode }) {
       setAppState(state);
       if (state.meal_plan) setMealPlan(state.meal_plan);
       if (state.resolved_list) setShopList(state.resolved_list as ResolvedGroceryList);
+      setPantryToBuy([...(state.pantry_to_buy || [])]);
       const profile = state.profile as { chef_id?: string; lunch_mode?: string } | null;
       if (profile?.chef_id) {
         setSelectedChefId(profile.chef_id);
@@ -201,6 +207,8 @@ export function AppProvider({ children }: { children: React.ReactNode }) {
       setMeals,
       shopList,
       setShopList,
+      pantryToBuy,
+      setPantryToBuy,
       cartResult,
       setCartResult,
       chefs,
@@ -239,6 +247,7 @@ export function AppProvider({ children }: { children: React.ReactNode }) {
       mealPlan,
       meals,
       shopList,
+      pantryToBuy,
       cartResult,
       chefs,
       premiumUnlocked,

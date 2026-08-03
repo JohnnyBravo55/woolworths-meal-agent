@@ -57,6 +57,8 @@ export default function RecipesScreen() {
   const {
     meals,
     shopList,
+    pantryToBuy,
+    setPantryToBuy,
     loading,
     setLoading,
     setShopList,
@@ -73,6 +75,21 @@ export default function RecipesScreen() {
   const [expandedMeals, setExpandedMeals] = useState<Set<string>>(() => new Set());
   const pendingResolve = useRef<{ force: boolean } | null>(null);
   const isWeb = Platform.OS === "web";
+
+  const pantryItems = useMemo(() => {
+    const seen = new Set<string>();
+    const ordered: string[] = [];
+    for (const meal of meals) {
+      for (const ing of meal.ingredients) {
+        if (!ing.is_pantry) continue;
+        const name = ing.name.trim().toLowerCase();
+        if (!name || seen.has(name)) continue;
+        seen.add(name);
+        ordered.push(name);
+      }
+    }
+    return ordered;
+  }, [meals]);
 
   const byDay = useMemo(() => groupByDay(meals), [meals]);
   const mealRows = useMemo(
@@ -156,6 +173,13 @@ export default function RecipesScreen() {
     }
     setError("");
 
+    try {
+      await api.setPantryToBuy(pantryToBuy);
+    } catch (e) {
+      setError(e instanceof Error ? e.message : "Could not save pantry ticks");
+      return;
+    }
+
     // Web: never prompt Connect / extension — go straight to product search.
     // Phone: still require WebView link when needed.
     if (!isWeb && (await needsWoolworthsSignInBeforeShop())) {
@@ -220,6 +244,37 @@ export default function RecipesScreen() {
     <>
       <StepNavBar position="top">{navButtons}</StepNavBar>
 
+      {pantryItems.length > 0 ? (
+        <Card>
+          <CardHeader>
+            <H2>Required pantry items</H2>
+            <Muted>Tick to add item to shopping list</Muted>
+          </CardHeader>
+          <CardBody>
+            {pantryItems.map((name) => {
+              const checked = pantryToBuy.includes(name);
+              return (
+                <Pressable
+                  key={name}
+                  style={styles.pantryRow}
+                  onPress={() => {
+                    setShopList(null);
+                    setPantryToBuy((prev) =>
+                      checked ? prev.filter((x) => x !== name) : [...prev, name],
+                    );
+                  }}
+                  accessibilityRole="checkbox"
+                  accessibilityState={{ checked }}
+                >
+                  <Text style={styles.pantryCheck}>{checked ? "☑" : "☐"}</Text>
+                  <Text style={styles.pantryLabel}>{name}</Text>
+                </Pressable>
+              );
+            })}
+          </CardBody>
+        </Card>
+      ) : null}
+
       <Card>
         <CardHeader>
           <H2>Your week of recipes</H2>
@@ -272,7 +327,16 @@ export default function RecipesScreen() {
           }
           const { meal, key } = item;
           const expanded = expandedMeals.has(key);
-          const ingredientCount = meal.ingredients.length;
+          const shopIngredients = meal.ingredients.filter((ing) => !ing.is_pantry);
+          const pantryNames = meal.ingredients
+            .filter((ing) => ing.is_pantry)
+            .map((ing) => ing.name.trim().toLowerCase())
+            .filter(Boolean);
+          const pantryNote =
+            pantryNames.length > 0
+              ? `Uses pantry: ${[...new Set(pantryNames)].join(", ")}`
+              : null;
+          const ingredientCount = shopIngredients.length;
           return (
             <Card style={styles.mealCard}>
               <CardHeader>
@@ -282,6 +346,7 @@ export default function RecipesScreen() {
               </CardHeader>
               <CardBody>
                 <Muted>{meal.description}</Muted>
+                {pantryNote ? <Text style={styles.pantryNote}>{pantryNote}</Text> : null}
                 {ingredientCount > 0 ? (
                   <View style={styles.ingBlock}>
                     <Pressable
@@ -295,7 +360,7 @@ export default function RecipesScreen() {
                       </Text>
                     </Pressable>
                     {expanded
-                      ? meal.ingredients.map((ing, i) => (
+                      ? shopIngredients.map((ing, i) => (
                           <Text key={i} style={styles.ing}>
                             • {ing.quantity} {ing.unit} {ing.name}
                           </Text>
@@ -315,22 +380,22 @@ export default function RecipesScreen() {
 const styles = StyleSheet.create({
   list: { flex: 1 },
   listContent: { paddingBottom: 160 },
-  hint: { fontSize: 13, color: theme.textMuted, lineHeight: 18 },
   dayLabel: {
+    marginTop: 12,
+    marginBottom: 4,
     fontSize: 12,
     fontWeight: "700",
-    color: theme.textMuted,
-    marginTop: 16,
-    marginBottom: 4,
+    color: theme.muted,
+    letterSpacing: 0.6,
   },
-  mealCard: { marginTop: 8 },
-  slot: { fontSize: 11, fontWeight: "700", color: theme.green, textTransform: "uppercase" },
-  ingBlock: { marginTop: 8 },
-  ingToggle: {
-    fontSize: 13,
-    fontWeight: "700",
-    color: theme.green,
-    marginBottom: 6,
-  },
-  ing: { fontSize: 13, color: theme.text },
+  mealCard: { marginBottom: 10 },
+  slot: { fontSize: 11, fontWeight: "600", color: theme.green, textTransform: "uppercase" },
+  hint: { color: theme.muted, fontSize: 13, lineHeight: 18 },
+  ingBlock: { marginTop: 10 },
+  ingToggle: { color: theme.green, fontWeight: "600", marginBottom: 6 },
+  ing: { color: theme.text, fontSize: 13, marginBottom: 2 },
+  pantryRow: { flexDirection: "row", alignItems: "center", gap: 8, paddingVertical: 6 },
+  pantryCheck: { fontSize: 18, width: 24 },
+  pantryLabel: { fontSize: 14, color: theme.text, textTransform: "capitalize" },
+  pantryNote: { marginTop: 8, fontSize: 13, fontStyle: "italic", color: theme.muted },
 });

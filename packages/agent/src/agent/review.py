@@ -77,8 +77,23 @@ class ReviewGate:
             lines.append(f"## {meal.name} ({meal.day_label})")
             lines.append(meal.description)
             lines.append("")
+            pantry_names = [
+                ing.name for ing in meal.ingredients if getattr(ing, "is_pantry", False)
+            ]
+            if pantry_names:
+                # first-seen dedupe
+                seen: set[str] = set()
+                ordered: list[str] = []
+                for name in pantry_names:
+                    key = name.strip().lower()
+                    if key and key not in seen:
+                        seen.add(key)
+                        ordered.append(key)
+                lines.append(f"Uses pantry: {', '.join(ordered)}")
+                lines.append("")
+            shop_ings = [ing for ing in meal.ingredients if not getattr(ing, "is_pantry", False)]
             lines.append("Ingredients:")
-            for ing in meal.ingredients:
+            for ing in shop_ings:
                 lines.append(f"  - {ing.quantity} {ing.unit} {ing.name}")
             lines.append("")
             lines.append("Steps:")

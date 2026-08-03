@@ -1,4 +1,4 @@
-"""Shared Pydantic models for the Woolworths meal agent."""
+"""Shared Pydantic models for the meal agent."""
 
 from shared.models import (
     AgentPhase,

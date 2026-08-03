@@ -34,7 +34,7 @@ def _prompt_discovery() -> dict:
             "[bold]Welcome, Chef's Assistant[/bold]\n\n"
             "I'll help you plan simple, great meals and build your Woolworths shop. "
             "Let's start with a few questions.",
-            title="Woolworths Meal Agent",
+            title="Meal Agent",
         )
     )
 

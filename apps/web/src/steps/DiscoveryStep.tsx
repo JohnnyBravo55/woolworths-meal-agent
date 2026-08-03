@@ -292,14 +292,6 @@ export function DiscoveryStep({
                 placeholder="milk, gluten free bread"
               />
             </Field>
-            <Field label="Already have at home (pantry)">
-              <input
-                className="w-full rounded-lg border border-slate-300 px-3 py-2 placeholder:text-slate-400"
-                value={answers.pantry_items}
-                onChange={(e) => set({ pantry_items: e.target.value })}
-                placeholder="olive oil, rice, soy sauce"
-              />
-            </Field>
             <div className="grid gap-4 sm:grid-cols-2">
               <Field label="Likes">
                 <input
@@ -409,9 +401,6 @@ export function DiscoveryStep({
               <Badge tone="default">No hard budget</Badge>
             )}
             {answers.allergies && <Badge tone="warning">Allergies: {answers.allergies}</Badge>}
-            {answers.pantry_items && (
-              <Badge tone="default">Pantry: {answers.pantry_items}</Badge>
-            )}
             {woolworthsConnected === false && (
               <p className="text-amber-700 text-xs">
                 Connect Woolworths for live prices. Plans still work with estimates.

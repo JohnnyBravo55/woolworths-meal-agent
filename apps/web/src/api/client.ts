@@ -86,6 +86,10 @@ export async function approveShop() {
   return api.approveShop();
 }
 
+export async function setPantryToBuy(items: string[]) {
+  return api.setPantryToBuy(items);
+}
+
 export async function searchStores(opts?: {
   q?: string;
   chain?: import("@meal-agent/app-core").StoreChain;

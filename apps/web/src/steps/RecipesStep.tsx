@@ -5,6 +5,9 @@ import { Badge } from "../components/ui/Badge";
 
 interface Props {
   meals: Meal[];
+  pantryItems: string[];
+  pantryToBuy: string[];
+  onPantryToBuyChange: (items: string[]) => void;
   onBack?: () => void;
   onContinue: () => void;
   onRefreshSearch: () => void;
@@ -60,6 +63,20 @@ function groupMealsByDay(meals: Meal[]): { day: string; meals: Meal[] }[] {
     }));
 }
 
+function pantryNoteForMeal(meal: Meal): string | null {
+  const names: string[] = [];
+  const seen = new Set<string>();
+  for (const ing of meal.ingredients) {
+    if (!ing.is_pantry) continue;
+    const name = ing.name.trim().toLowerCase();
+    if (!name || seen.has(name)) continue;
+    seen.add(name);
+    names.push(name);
+  }
+  if (!names.length) return null;
+  return `Uses pantry: ${names.join(", ")}`;
+}
+
 function resolveStatusLabel(progress: Props["progress"]): string {
   if (progress.phase === "validate") {
     return progress.message || "Checking products match your recipes…";
@@ -73,6 +90,9 @@ function resolveStatusLabel(progress: Props["progress"]): string {
 
 export function RecipesStep({
   meals,
+  pantryItems,
+  pantryToBuy,
+  onPantryToBuyChange,
   onBack,
   onContinue,
   onRefreshSearch,
@@ -94,8 +114,42 @@ export function RecipesStep({
     .map((s) => `${slotCounts[s]} ${s}${slotCounts[s] > 1 ? "s" : ""}`)
     .join(" · ");
 
+  const togglePantry = (name: string, checked: boolean) => {
+    if (checked) {
+      if (pantryToBuy.includes(name)) return;
+      onPantryToBuyChange([...pantryToBuy, name]);
+      return;
+    }
+    onPantryToBuyChange(pantryToBuy.filter((x) => x !== name));
+  };
+
   return (
     <div className="space-y-4">
+      {pantryItems.length > 0 && (
+        <Card>
+          <CardHeader>
+            <h2 className="text-lg font-semibold">Required pantry items</h2>
+            <p className="text-sm text-slate-600">Tick to add item to shopping list</p>
+          </CardHeader>
+          <CardBody>
+            <div className="grid gap-2 sm:grid-cols-2">
+              {pantryItems.map((name) => (
+                <label key={name} className="flex items-center gap-2 text-sm text-slate-800">
+                  <input
+                    type="checkbox"
+                    className="h-4 w-4 rounded border-slate-300"
+                    checked={pantryToBuy.includes(name)}
+                    onChange={(e) => togglePantry(name, e.target.checked)}
+                    disabled={resolving}
+                  />
+                  <span className="capitalize">{name}</span>
+                </label>
+              ))}
+            </div>
+          </CardBody>
+        </Card>
+      )}
+
       <Card>
         <CardHeader className="flex flex-wrap items-center justify-between gap-2">
           <div>
@@ -160,44 +214,49 @@ export function RecipesStep({
         {byDay.map(({ day, meals: dayMeals }) => (
           <div key={day} className="space-y-3">
             <h3 className="text-sm font-bold uppercase tracking-wide text-slate-500">{day}</h3>
-            {dayMeals.map((meal, idx) => (
-              <Card key={`${day}-${idx}`}>
-                <CardHeader className="flex items-center justify-between">
-                  <div>
-                    <span className="text-xs font-medium uppercase text-[var(--ww-green)]">
-                      {SLOT_LABEL[meal.slot] ?? meal.slot}
-                    </span>
-                    <h3 className="font-semibold text-slate-900">{meal.name}</h3>
-                  </div>
-                  <Badge>{meal.prep_time_minutes} min</Badge>
-                </CardHeader>
-                <CardBody className="text-sm text-slate-700 space-y-3">
-                  <p>{meal.description}</p>
-                  {meal.ingredients.length > 0 && (
+            {dayMeals.map((meal, idx) => {
+              const pantryNote = pantryNoteForMeal(meal);
+              const shopIngredients = meal.ingredients.filter((ing) => !ing.is_pantry);
+              return (
+                <Card key={`${day}-${idx}`}>
+                  <CardHeader className="flex items-center justify-between">
                     <div>
-                      <strong>Ingredients</strong>
-                      <ul className="mt-1 list-disc pl-5">
-                        {meal.ingredients.map((ing, i) => (
-                          <li key={i}>
-                            {ing.quantity} {ing.unit} {ing.name}
-                          </li>
-                        ))}
-                      </ul>
+                      <span className="text-xs font-medium uppercase text-[var(--ww-green)]">
+                        {SLOT_LABEL[meal.slot] ?? meal.slot}
+                      </span>
+                      <h3 className="font-semibold text-slate-900">{meal.name}</h3>
                     </div>
-                  )}
-                  {meal.steps.length > 0 && (
-                    <div>
-                      <strong>Steps</strong>
-                      <ol className="mt-1 list-decimal pl-5 space-y-1">
-                        {meal.steps.map((step, i) => (
-                          <li key={i}>{step}</li>
-                        ))}
-                      </ol>
-                    </div>
-                  )}
-                </CardBody>
-              </Card>
-            ))}
+                    <Badge>{meal.prep_time_minutes} min</Badge>
+                  </CardHeader>
+                  <CardBody className="text-sm text-slate-700 space-y-3">
+                    <p>{meal.description}</p>
+                    {pantryNote && <p className="text-slate-500 italic">{pantryNote}</p>}
+                    {shopIngredients.length > 0 && (
+                      <div>
+                        <strong>Ingredients</strong>
+                        <ul className="mt-1 list-disc pl-5">
+                          {shopIngredients.map((ing, i) => (
+                            <li key={i}>
+                              {ing.quantity} {ing.unit} {ing.name}
+                            </li>
+                          ))}
+                        </ul>
+                      </div>
+                    )}
+                    {meal.steps.length > 0 && (
+                      <div>
+                        <strong>Steps</strong>
+                        <ol className="mt-1 list-decimal pl-5 space-y-1">
+                          {meal.steps.map((step, i) => (
+                            <li key={i}>{step}</li>
+                          ))}
+                        </ol>
+                      </div>
+                    )}
+                  </CardBody>
+                </Card>
+              );
+            })}
           </div>
         ))}
       </div>
