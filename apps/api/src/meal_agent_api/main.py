@@ -149,6 +149,11 @@ def _sse_event(event: str, data: dict) -> str:
     return f"event: {event}\ndata: {json.dumps(data)}\n\n"
 
 
+def _sse_ping() -> str:
+    """SSE comment heartbeat — keeps Cloudflare/Render from idle-dropping the stream."""
+    return ": ping\n\n"
+
+
 def _sse_response(stream):
     return StreamingResponse(
         stream,
@@ -711,25 +716,31 @@ async def plan_generate(
             {"message": "Consulting your chef…", "done": 2, "total": 5, "phase": "generate"},
         )
         try:
-            # Heartbeats while the LLM runs — keeps proxies from closing idle SSE streams.
+            # Heartbeats while the LLM runs — keeps Cloudflare/Render from closing idle SSE.
+            # Comment pings every few seconds (status events are less frequent).
             task = asyncio.create_task(session.orchestrator.generate_plan(profile))
+            last_status = 0.0
             while not task.done():
                 try:
-                    await asyncio.wait_for(asyncio.shield(task), timeout=8.0)
+                    await asyncio.wait_for(asyncio.shield(task), timeout=3.0)
                 except asyncio.TimeoutError:
-                    yield _sse_event(
-                        "status",
-                        {
-                            "message": "Still cooking with your chef…",
-                            "done": 3,
-                            "total": 5,
-                            "phase": "generate",
-                        },
-                    )
+                    yield _sse_ping()
+                    now = asyncio.get_running_loop().time()
+                    if now - last_status >= 8.0:
+                        last_status = now
+                        yield _sse_event(
+                            "status",
+                            {
+                                "message": "Still cooking with your chef…",
+                                "done": 3,
+                                "total": 5,
+                                "phase": "generate",
+                            },
+                        )
             plan = await task
             yield _sse_event(
                 "status",
-                {"message": "Balancing meals & building shop list…", "done": 4, "total": 5},
+                {"message": "Finishing your meal plan…", "done": 4, "total": 5},
             )
             llm_err = session.orchestrator.planner._last_llm_error
             if llm_err:

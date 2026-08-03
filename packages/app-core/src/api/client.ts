@@ -83,7 +83,8 @@ export function createApiClient(config: ApiClientConfig) {
     const controller = new AbortController();
     const url = base();
     // Render free cold-starts often exceed 15s; local stays snappy.
-    const timeoutMs = isHostedHttpUrl(url) ? 60_000 : 15_000;
+    // Hosted setProfile-before-generate can also stall during wake — keep under CF 125s.
+    const timeoutMs = isHostedHttpUrl(url) ? 90_000 : 15_000;
     const timeout = setTimeout(() => controller.abort(), timeoutMs);
     try {
       const headers = await authHeaders();
@@ -124,8 +125,22 @@ export function createApiClient(config: ApiClientConfig) {
       ...(init?.headers as Record<string, string> | undefined),
     };
 
+    // Prefer XHR for SSE everywhere — fetch streaming is flaky on Expo web and some
+    // proxies buffer until the response ends (looks like a freeze, then timeout).
+    if (typeof XMLHttpRequest !== "undefined") {
+      await streamSSEViaXHR(
+        url,
+        mergedHeaders,
+        onEvent,
+        init?.body ?? null,
+        600_000,
+        useCredentials,
+      );
+      return;
+    }
+
     if (isReactNative()) {
-      await streamSSEViaXHR(url, mergedHeaders, onEvent, init?.body ?? null);
+      await streamSSEViaXHR(url, mergedHeaders, onEvent, init?.body ?? null, 600_000, useCredentials);
       return;
     }
 

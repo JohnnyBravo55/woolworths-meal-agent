@@ -53,6 +53,7 @@ export function streamSSEViaXHR(
   onEvent: SSEHandler,
   body?: BodyInit | null,
   timeoutMs = 600_000,
+  withCredentials = false,
 ): Promise<void> {
   return new Promise((resolve, reject) => {
     const xhr = new XMLHttpRequest();
@@ -60,6 +61,7 @@ export function streamSSEViaXHR(
     const lastLen = { n: 0 };
 
     xhr.open("POST", url, true);
+    xhr.withCredentials = withCredentials;
     for (const [k, v] of Object.entries(headers)) {
       xhr.setRequestHeader(k, v);
     }

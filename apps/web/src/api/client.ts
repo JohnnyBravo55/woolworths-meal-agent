@@ -70,6 +70,10 @@ export async function setProfile(answers: DiscoveryAnswers) {
   return api.setProfile(answers);
 }
 
+export async function getPlan() {
+  return api.getPlan();
+}
+
 export async function approvePlan() {
   return api.approvePlan();
 }

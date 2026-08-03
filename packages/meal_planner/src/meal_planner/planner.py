@@ -2,6 +2,7 @@
 
 from __future__ import annotations
 
+import asyncio
 import json
 import os
 from typing import Any
@@ -507,24 +508,41 @@ class MealPlanner:
                 "OpenAI meal planning failed: server could not reach api.openai.com. "
                 f"Details: {message[:240]}"
             )
+        if "timed out" in lowered or "timeout" in lowered:
+            return (
+                "OpenAI meal planning timed out — the chef took too long. "
+                "Try again in a moment, or pick Basic Sam for a faster plan."
+            )
         return f"OpenAI meal planning failed: {message[:240]}"
+
+    # Hosted SSE sits behind Cloudflare (~125s idle) and Render proxies.
+    # Fail the LLM call before the stream dies so basic chefs can template-fallback.
+    LLM_TIMEOUT_SECONDS = 90.0
 
     async def _generate_with_llm(self, profile: UserProfile) -> MealPlan:
         from openai import AsyncOpenAI
 
         chef = get_chef(profile.chef_id)
-        client = AsyncOpenAI(api_key=self.api_key)
+        client = AsyncOpenAI(api_key=self.api_key, timeout=self.LLM_TIMEOUT_SECONDS)
         prompt = self._build_prompt(profile)
 
-        response = await client.chat.completions.create(
-            model=self.model,
-            messages=[
-                {"role": "system", "content": chef.system_prompt},
-                {"role": "user", "content": prompt},
-            ],
-            response_format={"type": "json_object"},
-            temperature=0.7,
-        )
+        try:
+            response = await asyncio.wait_for(
+                client.chat.completions.create(
+                    model=self.model,
+                    messages=[
+                        {"role": "system", "content": chef.system_prompt},
+                        {"role": "user", "content": prompt},
+                    ],
+                    response_format={"type": "json_object"},
+                    temperature=0.7,
+                ),
+                timeout=self.LLM_TIMEOUT_SECONDS,
+            )
+        except asyncio.TimeoutError as exc:
+            raise TimeoutError(
+                f"OpenAI meal planning timed out after {int(self.LLM_TIMEOUT_SECONDS)}s"
+            ) from exc
 
         content = response.choices[0].message.content or "{}"
         data = json.loads(content)
@@ -916,16 +934,24 @@ class MealPlanner:
             indent=2,
         )
 
-        client = AsyncOpenAI(api_key=self.api_key)
-        response = await client.chat.completions.create(
-            model=self.model,
-            messages=[
-                {"role": "system", "content": chef.system_prompt},
-                {"role": "user", "content": prompt},
-            ],
-            response_format={"type": "json_object"},
-            temperature=0.7,
-        )
+        client = AsyncOpenAI(api_key=self.api_key, timeout=self.LLM_TIMEOUT_SECONDS)
+        try:
+            response = await asyncio.wait_for(
+                client.chat.completions.create(
+                    model=self.model,
+                    messages=[
+                        {"role": "system", "content": chef.system_prompt},
+                        {"role": "user", "content": prompt},
+                    ],
+                    response_format={"type": "json_object"},
+                    temperature=0.7,
+                ),
+                timeout=self.LLM_TIMEOUT_SECONDS,
+            )
+        except asyncio.TimeoutError as exc:
+            raise TimeoutError(
+                f"OpenAI meal planning timed out after {int(self.LLM_TIMEOUT_SECONDS)}s"
+            ) from exc
         content = response.choices[0].message.content or "{}"
         data = json.loads(content)
 

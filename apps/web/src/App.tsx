@@ -11,6 +11,7 @@ import {
   approveShop,
   downloadRecipes,
   getAuthMe,
+  getPlan,
   getState,
   listChefs,
   listProfiles,
@@ -264,6 +265,8 @@ export default function App() {
     setLoading(true);
     setError("");
     setPlanProgress({ done: 0, total: 5, message: "Starting…" });
+    let completed = false;
+    let streamError = "";
     try {
       await setProfile({ ...answers, chef_id: selectedChefId });
       await streamSSE("/api/plan/generate", (event, data) => {
@@ -278,6 +281,7 @@ export default function App() {
           setError(String(data.message));
         }
         if (event === "complete") {
+          completed = true;
           setMealPlan(data.meal_plan as MealPlan);
           setPlanChefId(selectedChefId);
           setSessionBaseline({ ...answers, chef_id: selectedChefId });
@@ -286,8 +290,33 @@ export default function App() {
           markStepReached(2);
           setStep(2);
         }
-        if (event === "error") setError(String(data.message));
+        if (event === "error") {
+          streamError = String(data.message || "Meal plan failed");
+          setError(streamError);
+        }
       });
+      if (!completed) {
+        try {
+          const recovered = await getPlan();
+          const state = await getState();
+          const profileChef = (state.profile as { chef_id?: string } | null)?.chef_id;
+          if (recovered.meal_plan && profileChef === selectedChefId) {
+            completed = true;
+            setMealPlan(recovered.meal_plan as MealPlan);
+            setPlanChefId(selectedChefId);
+            setSessionBaseline({ ...answers, chef_id: selectedChefId });
+            setShopList(null);
+            setAppState(state as AppState);
+            markStepReached(2);
+            setStep(2);
+          }
+        } catch {
+          /* no plan on server yet */
+        }
+      }
+      if (!completed && !streamError) {
+        setError("Meal plan stream ended early — wait a few seconds and try again.");
+      }
     } catch (e) {
       setError(e instanceof Error ? e.message : "Failed to generate plan");
     } finally {
