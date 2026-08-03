@@ -17,6 +17,9 @@ from meal_planner.ingredient_normalize import split_compound_ingredients
 from meal_planner.meal_quality import (
     ensure_meal_balance,
     enforce_culinary_coherence,
+    kid_unsuitable_reasons,
+    meal_is_kid_unsuitable,
+    profile_allows_adventurous_food,
     scale_dinner_portions_for_leftovers,
 )
 from meal_planner.shop_coverage import infer_ingredients_from_titles
@@ -336,8 +339,57 @@ def _enforce_meal_counts(plan: MealPlan, profile: UserProfile) -> MealPlan:
     return plan
 
 
+def _replace_kid_unsuitable_meals(meals: list[Meal], profile: UserProfile) -> list[Meal]:
+    """Swap spicy/adventurous dishes when children ≤12 are present."""
+    if profile.children_under_13 <= 0 or profile_allows_adventurous_food(profile):
+        return meals
+
+    safe_templates = [
+        t
+        for t in _TEMPLATE_DINNERS
+        if not meal_is_kid_unsuitable(
+            _template_to_meal(
+                t,
+                MealSlot.DINNER,
+                "Monday",
+                profile.simplicity,
+                servings=profile.adult_equivalent_servings,
+            )
+        )
+    ]
+    if not safe_templates:
+        return meals
+
+    t_idx = 0
+    out: list[Meal] = []
+    for meal in meals:
+        if meal.slot not in (MealSlot.DINNER, MealSlot.LUNCH) or not meal_is_kid_unsuitable(
+            meal
+        ):
+            out.append(meal)
+            continue
+        reasons = ", ".join(kid_unsuitable_reasons(meal))
+        template = safe_templates[t_idx % len(safe_templates)]
+        t_idx += 1
+        replacement = _template_to_meal(
+            template,
+            meal.slot,
+            meal.day_label or "Monday",
+            profile.simplicity,
+            servings=profile.adult_equivalent_servings,
+        )
+        # Do not embed the rejected dish name — it can re-trigger suitability checks.
+        replacement.description = (
+            f"{replacement.description} "
+            f"(Replaced a less kid-friendly option: {reasons}.)"
+        ).strip()
+        out.append(replacement)
+    return out
+
+
 def _finalize_meals(meals: list[Meal], profile: UserProfile) -> list[Meal]:
     """Balance recipes and infer missing ingredients after count enforcement."""
+    meals = _replace_kid_unsuitable_meals(meals, profile)
     meals = infer_ingredients_from_titles(meals, profile)
     meals = ensure_meal_balance(meals, profile)
     meals = scale_dinner_portions_for_leftovers(meals, profile)
@@ -498,9 +550,12 @@ class MealPlanner:
             kid_friendly_note = (
                 "KID-FRIENDLY HARD BIAS: At least one child 12 or under is in the household. "
                 "Plan mild, familiar, family-friendly meals for the WHOLE plan. "
-                "Avoid spicy heat, very adventurous or 'out there' dishes, and strongly "
-                "fermented or intense flavours by default. Keep the chef's cuisine identity "
-                "at a gentler level (e.g. Asian-inspired without heavy chilli). "
+                "Do NOT use: chilli heat, sriracha, gochujang, wasabi, Thai green/red curry, "
+                "vindaloo, hot curry pastes, raw fish/sushi/sashimi/ceviche, organ meats, "
+                "alcohol in recipes, kimchi, anchovies, blue cheese, or other strongly "
+                "fermented / very adventurous flavours. "
+                "Prefer gentle versions of the chef's cuisine "
+                "(e.g. teriyaki, mild soy-honey, tomato pasta, roast chicken). "
                 "OVERRIDE: If likes or other_instructions explicitly ask for spice, heat, "
                 "or adventurous food, honour those user instructions."
             )

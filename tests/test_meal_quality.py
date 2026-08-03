@@ -2,8 +2,14 @@
 
 from meal_planner.budget_feasibility import check_budget_feasibility, estimate_plan_cost
 from meal_planner.ingredients import build_shopping_ingredients
-from meal_planner.meal_quality import enforce_culinary_coherence, ensure_meal_balance
-from meal_planner.planner import MealPlanner
+from meal_planner.meal_quality import (
+    enforce_culinary_coherence,
+    ensure_meal_balance,
+    kid_unsuitable_reasons,
+    meal_is_kid_unsuitable,
+    profile_allows_adventurous_food,
+)
+from meal_planner.planner import MealPlanner, _finalize_meals
 from shared.models import Ingredient, LunchMode, Meal, MealSlot, MealsRequested, UserProfile
 import pytest
 
@@ -223,3 +229,45 @@ def test_dinner_not_scaled_without_next_day_leftover_lunch():
     by_name = {i.name: i for i in out[0].ingredients}
     assert by_name["beef mince"].quantity == 500
     assert by_name["soft taco tortillas"].quantity == 2
+
+def test_kid_unsuitable_detects_thai_green_curry():
+    meal = Meal(
+        name="Thai Green Curry with Chicken",
+        slot=MealSlot.DINNER,
+        day_label="Tuesday",
+        description="Aromatic green curry",
+        ingredients=[
+            Ingredient(name="chicken thigh", quantity=500, unit="g"),
+            Ingredient(name="green curry paste", quantity=1, unit="jar"),
+            Ingredient(name="coconut milk", quantity=1, unit="can"),
+        ],
+        steps=["Simmer curry paste with coconut milk and chicken."],
+    )
+    assert meal_is_kid_unsuitable(meal)
+    assert "spicy_heat" in kid_unsuitable_reasons(meal)
+
+
+def test_finalize_swaps_kid_unsuitable_meals():
+    profile = _profile(
+        adults=2,
+        children_under_13=1,
+        children_age_bands={"1-3": 1, "4-6": 0, "7-9": 0, "10-12": 0},
+        meals_requested=MealsRequested(dinner=1, lunch=0),
+    )
+    spicy = Meal(
+        name="Thai Green Curry with Chicken",
+        slot=MealSlot.DINNER,
+        day_label="Monday",
+        description="Spicy Thai curry",
+        ingredients=[Ingredient(name="green curry paste", quantity=1, unit="jar")],
+        steps=["Cook curry."],
+    )
+    out = _finalize_meals([spicy], profile)
+    assert out[0].name != "Thai Green Curry with Chicken"
+    assert not meal_is_kid_unsuitable(out[0])
+    assert "less kid-friendly" in (out[0].description or "").lower()
+
+
+def test_spice_override_honours_user_likes():
+    profile = _profile(likes=["spicy food"], children_under_13=1)
+    assert profile_allows_adventurous_food(profile)

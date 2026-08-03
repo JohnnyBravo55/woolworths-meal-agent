@@ -61,6 +61,7 @@ def test_build_prompt_includes_child_portion_constraints():
     assert constraints["adult_equivalent_servings"] == 3.5
     assert constraints["children_under_13"] == 2
     assert "KID-FRIENDLY HARD BIAS" in constraints["kid_friendly_rules"]
+    assert "Thai green/red curry" in constraints["kid_friendly_rules"]
     assert "adult_equivalent_servings" in constraints["portion_rules"]
 
 

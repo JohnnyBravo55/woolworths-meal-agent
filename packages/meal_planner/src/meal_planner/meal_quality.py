@@ -7,6 +7,99 @@ import re
 from shared.allergy import ingredient_conflicts_allergies, profile_has_gluten_allergy
 from shared.models import Ingredient, LunchMode, Meal, MealSlot, UserProfile
 
+# Dish / ingredient cues that are unsuitable when children ≤12 are present
+# (unless the user explicitly asked for spice / adventurous food).
+_KID_UNSUITABLE_PATTERNS: tuple[tuple[str, re.Pattern[str]], ...] = (
+    (
+        "spicy_heat",
+        re.compile(
+            r"\b("
+            r"chilli|chili|jalape[nñ]o|habanero|cayenne|sriracha|hot sauce|"
+            r"gochujang|wasabi|sichuan|szechuan|vindaloo|phaal|"
+            r"thai green curry|thai red curry|green curry|red curry|"
+            r"curry paste|extra hot|fiery|blazing|spicy hot|hot\s+and\s+spicy"
+            r")\b",
+            re.I,
+        ),
+    ),
+    (
+        "alcohol",
+        re.compile(
+            r"\b(red wine|white wine|cooking wine|beer|lager|rum|vodka|"
+            r"whisky|whiskey|brandy|sake)\b",
+            re.I,
+        ),
+    ),
+    (
+        "raw_seafood",
+        re.compile(
+            r"\b(sashimi|tartare|ceviche|carpaccio|raw fish|raw salmon|"
+            r"raw tuna|sushi)\b",
+            re.I,
+        ),
+    ),
+    (
+        "offal",
+        re.compile(r"\b(liver|kidney|offal|tripe|tongue|sweetbread)\b", re.I),
+    ),
+    (
+        "intense_fermented",
+        re.compile(
+            r"\b(natto|stinky tofu|blue cheese|anchov(?:y|ies)|kimchi|"
+            r"shrimp paste|fermented shrimp)\b",
+            re.I,
+        ),
+    ),
+    (
+        "very_adventurous",
+        re.compile(
+            r"\b(uni|sea urchin|octopus|squid ink|bone marrow|"
+            r"escargot|frogs? legs)\b",
+            re.I,
+        ),
+    ),
+)
+
+_SPICE_OVERRIDE_RE = re.compile(
+    r"\b(spicy|spice|chilli|chili|hot food|adventurous|heat)\b",
+    re.I,
+)
+
+
+def _meal_blob(meal: Meal) -> str:
+    parts = [
+        meal.name or "",
+        meal.description or "",
+        " ".join(meal.steps or []),
+        " ".join(ing.name for ing in meal.ingredients or []),
+    ]
+    return " | ".join(parts)
+
+
+def profile_allows_adventurous_food(profile: UserProfile) -> bool:
+    """True when likes/other_instructions explicitly ask for spice or adventure."""
+    blob = " ".join(
+        [
+            " ".join(profile.likes or []),
+            profile.other_instructions or "",
+        ]
+    )
+    return bool(_SPICE_OVERRIDE_RE.search(blob))
+
+
+def kid_unsuitable_reasons(meal: Meal) -> list[str]:
+    """Return reason labels if a meal is unsuitable for children ≤12."""
+    text = _meal_blob(meal)
+    reasons: list[str] = []
+    for label, pattern in _KID_UNSUITABLE_PATTERNS:
+        if pattern.search(text):
+            reasons.append(label)
+    return reasons
+
+
+def meal_is_kid_unsuitable(meal: Meal) -> bool:
+    return bool(kid_unsuitable_reasons(meal))
+
 _PROTEIN = frozenset(
     {
         "chicken",
