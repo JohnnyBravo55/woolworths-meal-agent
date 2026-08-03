@@ -24,7 +24,6 @@ _JUNK_TOKENS = frozenset(
         "broth",
         "nugget",
         "nuggets",
-        "tender",
         "tenders",
         "crumb",
         "crumbed",
@@ -201,9 +200,13 @@ _PHRASE_ACCEPT: dict[str, tuple[str, ...]] = {
 _INGREDIENT_REJECT: dict[str, tuple[str, ...]] = {
     "avocado": ("kit", "ranch", "salad", "dip", "guacamole", "oil", "dressing"),
     "milk": ("coconut", "almond", "oat", "soy", "powder", "chocolate", "condensed", "evaporated"),
-    "chicken breast": ("nugget", "tender", "crumb", "schnitzel", "pie", "stock", "broth"),
-    "chicken thigh": ("nugget", "tenderbasted", "crumb", "schnitzel", "pie", "stock", "broth"),
-    "chicken thighs": ("nugget", "tenderbasted", "crumb", "schnitzel", "pie", "stock", "broth"),
+    # Note: "tenderbasted" NZ thigh packs are valid — do NOT reject them.
+    "chicken breast": ("nugget", "tenders", "crumb", "schnitzel", "pie", "stock", "broth", "kebab"),
+    "chicken thigh": ("nugget", "tenders", "crumb", "schnitzel", "pie", "stock", "broth", "kebab"),
+    "chicken thighs": ("nugget", "tenders", "crumb", "schnitzel", "pie", "stock", "broth", "kebab"),
+    "salmon": ("mackerel", "anchovy", "anchovies", "tuna", "sardine", "herring", "hoki", "cod", "snapper"),
+    "salmon fillet": ("mackerel", "anchovy", "anchovies", "tuna", "sardine", "herring", "hoki", "cod", "snapper"),
+    "salmon fillets": ("mackerel", "anchovy", "anchovies", "tuna", "sardine", "herring", "hoki", "cod", "snapper"),
     "beef mince": ("pork", "chicken", "lamb", "sausage", "pie", "patty", "burger"),
     "beef": ("pork", "chicken", "lamb", "sausage"),
     "broccoli": ("bite", "bites", "cheese", "soup", "kit", "salad", "rice"),
@@ -336,6 +339,12 @@ def score_product_name(ingredient: str, product_name: str, brand: str = "") -> f
 
     non_filler = prod_exp - _FILLER_TOKENS
     tightness = len(overlap) / max(1, len(non_filler)) if non_filler else ratio
+
+    # Core species/product token must appear for multi-word proteins
+    # (prevents "salmon fillets" → "mackerel fillets").
+    core = next((t for t in ("salmon", "chicken", "beef", "lamb", "pork", "tofu") if t in ing_tokens), None)
+    if core and core not in prod_exp and not synonym_hit and not phrase_hit:
+        return 0.0
 
     if ing in prod or ing == prod_raw or synonym_hit or phrase_hit:
         return 75.0 + 20.0 * tightness + min(5.0, len(ing) * 0.2)

@@ -8,8 +8,9 @@ from typing import Any
 import httpx
 
 from price_check.links import enrich_line, with_store_url
-from price_check.matching import pick_best_product, search_query_variants
+from price_check.matching import pick_best_product, score_product_name, search_query_variants
 from price_check.models import PriceCheckLine, PriceSource, StoreChain, StoreRef
+from price_check.pricing import pick_best_priced_product, price_purchase
 
 _UA = (
     "Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 "
@@ -174,6 +175,34 @@ async def search_products(chain: StoreChain, store_uuid: str, query: str, *, lim
         return list(resp.json().get("products") or [])
 
 
+def _effective_cents(product: dict) -> int | None:
+    """Prefer Club Deal / promo cents when cheaper than shelf price."""
+    single = product.get("singlePrice") or {}
+    shelf = single.get("price")
+    promo_cents = None
+    for promo in product.get("promotions") or []:
+        if not isinstance(promo, dict):
+            continue
+        reward = promo.get("rewardValue")
+        if reward is None:
+            continue
+        try:
+            value = int(reward)
+        except (TypeError, ValueError):
+            continue
+        if promo_cents is None or value < promo_cents:
+            promo_cents = value
+    try:
+        shelf_i = int(shelf) if shelf is not None else None
+    except (TypeError, ValueError):
+        shelf_i = None
+    if shelf_i is None:
+        return promo_cents
+    if promo_cents is None:
+        return shelf_i
+    return min(shelf_i, promo_cents)
+
+
 async def match_line(store: StoreRef, ingredient: str, quantity: float, unit: str) -> PriceCheckLine | None:
     if store.chain not in _CHAIN_CONFIG:
         return None
@@ -188,34 +217,49 @@ async def match_line(store: StoreRef, ingredient: str, quantity: float, unit: st
                 continue
             if sku:
                 seen_skus.add(sku)
+            cents = _effective_cents(p)
             candidates.append(
                 {
                     "name": str(p.get("name") or p.get("displayName") or ""),
                     "brand": str(p.get("brand") or ""),
                     "sku": sku,
-                    "price_cents": (p.get("singlePrice") or {}).get("price"),
+                    "price_cents": cents,
                     "display": str(p.get("displayName") or ""),
+                    "saleType": str(p.get("saleType") or ""),
                     "raw": p,
                 }
             )
         if pick_best_product(ingredient, candidates):
             break
-    best = pick_best_product(ingredient, candidates)
+    best = pick_best_priced_product(
+        ingredient,
+        candidates,
+        quantity=quantity,
+        unit=unit,
+        score_fn=score_product_name,
+    )
     if not best:
         return None
     unit_price = _cents_to_nzd(best.get("price_cents"))
     if unit_price <= 0:
         return None
-    qty = float(quantity or 1) or 1.0
-    # WEIGHT sale types would need grams; treat as unit count for v1
-    line_total = round(unit_price * qty, 2)
+    buy_qty, buy_unit, line_total = price_purchase(
+        ingredient=ingredient,
+        quantity=quantity,
+        unit=unit,
+        unit_price=unit_price,
+        sale_type=str(best.get("saleType") or ""),
+        sku=str(best.get("sku") or ""),
+        display=str(best.get("display") or ""),
+        product_name=str(best.get("name") or ""),
+    )
     product_name = " ".join(
         x for x in [best.get("brand"), best.get("name"), best.get("display")] if x
     ).strip()
     line = PriceCheckLine(
         ingredient=ingredient,
-        quantity=qty,
-        unit=unit or "each",
+        quantity=buy_qty,
+        unit=buy_unit,
         product_name=product_name,
         sku=str(best.get("sku") or ""),
         unit_price=unit_price,
