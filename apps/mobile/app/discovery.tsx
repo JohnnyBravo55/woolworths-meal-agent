@@ -13,7 +13,11 @@ import { confirmSessionLoss } from "@/lib/confirm-session-loss";
 import { useWizardNav } from "@/lib/useWizardNav";
 import {
   EMPTY_AGE_BANDS,
+  ageBandsSum,
+  clampAgeBandValue,
+  maxForAgeBand,
   profileToAnswers,
+  trimAgeBandsToChildren,
   type ChildrenAgeBands,
   type DiscoveryAnswers,
 } from "@meal-agent/app-core";
@@ -90,6 +94,11 @@ export default function DiscoveryScreen() {
     next.household_size = Math.max(1, adults + children);
     if (children === 0) {
       next.children_age_bands = { ...EMPTY_AGE_BANDS };
+    } else if (patch.children_under_13 !== undefined) {
+      next.children_age_bands = trimAgeBandsToChildren(
+        next.children_age_bands || EMPTY_AGE_BANDS,
+        children,
+      );
     }
     setAnswers(next);
     if (ageError) setAgeError("");
@@ -106,11 +115,14 @@ export default function DiscoveryScreen() {
   };
 
   const setBand = (key: keyof ChildrenAgeBands, v: number) => {
+    const bands = answers.children_age_bands || EMPTY_AGE_BANDS;
     set({
-      children_age_bands: {
-        ...(answers.children_age_bands || EMPTY_AGE_BANDS),
-        [key]: v,
-      },
+      children_age_bands: clampAgeBandValue(
+        bands,
+        key,
+        v,
+        answers.children_under_13 || 0,
+      ),
     });
   };
 
@@ -118,8 +130,7 @@ export default function DiscoveryScreen() {
     const children = answers.children_under_13 || 0;
     if (children > 0) {
       const bands = answers.children_age_bands || EMPTY_AGE_BANDS;
-      const sum = AGE_BAND_LABELS.reduce((acc, { key }) => acc + (bands[key] || 0), 0);
-      if (sum !== children) {
+      if (ageBandsSum(bands) !== children) {
         setAgeError("Assign an age for each child");
         setError("Assign an age for each child");
         return;
@@ -204,16 +215,19 @@ export default function DiscoveryScreen() {
           {(answers.children_under_13 ?? 0) > 0 && (
             <View style={{ marginTop: 8, gap: 10 }}>
               <Text style={styles.label}>Ages of children</Text>
-              {AGE_BAND_LABELS.map(({ key, label }) => (
-                <Field key={key} label={label}>
-                  <StepperInput
-                    value={(answers.children_age_bands || EMPTY_AGE_BANDS)[key] || 0}
-                    onChange={(v) => setBand(key, v)}
-                    min={0}
-                    max={answers.children_under_13 || 0}
-                  />
-                </Field>
-              ))}
+              {AGE_BAND_LABELS.map(({ key, label }) => {
+                const bands = answers.children_age_bands || EMPTY_AGE_BANDS;
+                return (
+                  <Field key={key} label={label}>
+                    <StepperInput
+                      value={bands[key] || 0}
+                      onChange={(v) => setBand(key, v)}
+                      min={0}
+                      max={maxForAgeBand(bands, key, answers.children_under_13 || 0)}
+                    />
+                  </Field>
+                );
+              })}
               {!!ageError && <Text style={{ color: "#b45309", fontSize: 13 }}>{ageError}</Text>}
             </View>
           )}

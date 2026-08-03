@@ -13,3 +13,9 @@ export type {
 } from "@meal-agent/app-core";
 
 export { DEFAULT_ANSWERS, EMPTY_AGE_BANDS, STEPS } from "@meal-agent/app-core";
+export {
+  ageBandsSum,
+  clampAgeBandValue,
+  maxForAgeBand,
+  trimAgeBandsToChildren,
+} from "@meal-agent/app-core";

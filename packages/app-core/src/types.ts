@@ -212,6 +212,52 @@ export const EMPTY_AGE_BANDS: ChildrenAgeBands = {
   "10-12": 0,
 };
 
+export const AGE_BAND_KEYS: (keyof ChildrenAgeBands)[] = ["1-3", "4-6", "7-9", "10-12"];
+
+export function ageBandsSum(bands: ChildrenAgeBands): number {
+  return AGE_BAND_KEYS.reduce((sum, key) => sum + (bands[key] || 0), 0);
+}
+
+/** Max allowed for one band so total assigned ages never exceeds children. */
+export function maxForAgeBand(
+  bands: ChildrenAgeBands,
+  key: keyof ChildrenAgeBands,
+  childrenUnder13: number,
+): number {
+  const children = Math.max(0, childrenUnder13);
+  const others = ageBandsSum(bands) - (bands[key] || 0);
+  return Math.max(0, children - others);
+}
+
+export function clampAgeBandValue(
+  bands: ChildrenAgeBands,
+  key: keyof ChildrenAgeBands,
+  value: number,
+  childrenUnder13: number,
+): ChildrenAgeBands {
+  const capped = Math.min(Math.max(0, Math.floor(value)), maxForAgeBand(bands, key, childrenUnder13));
+  return { ...bands, [key]: capped };
+}
+
+/** When child count drops, reduce band totals so they never exceed the new total. */
+export function trimAgeBandsToChildren(
+  bands: ChildrenAgeBands,
+  childrenUnder13: number,
+): ChildrenAgeBands {
+  const children = Math.max(0, childrenUnder13);
+  if (children === 0) return { ...EMPTY_AGE_BANDS };
+  let excess = ageBandsSum(bands) - children;
+  if (excess <= 0) return { ...bands };
+  const next: ChildrenAgeBands = { ...bands };
+  for (const key of [...AGE_BAND_KEYS].reverse()) {
+    if (excess <= 0) break;
+    const take = Math.min(next[key] || 0, excess);
+    next[key] = (next[key] || 0) - take;
+    excess -= take;
+  }
+  return next;
+}
+
 export const DEFAULT_ANSWERS: DiscoveryAnswers = {
   household_size: 2,
   adults: 2,

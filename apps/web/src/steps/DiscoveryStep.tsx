@@ -1,6 +1,12 @@
 import { useState } from "react";
 import type { ChildrenAgeBands, DiscoveryAnswers } from "../types";
-import { EMPTY_AGE_BANDS } from "../types";
+import {
+  EMPTY_AGE_BANDS,
+  ageBandsSum,
+  clampAgeBandValue,
+  maxForAgeBand,
+  trimAgeBandsToChildren,
+} from "../types";
 import { Button } from "../components/ui/Button";
 import { Card, CardBody, CardHeader } from "../components/ui/Card";
 import { Badge } from "../components/ui/Badge";
@@ -106,6 +112,11 @@ export function DiscoveryStep({
     next.household_size = Math.max(1, adults + children);
     if (children === 0) {
       next.children_age_bands = { ...EMPTY_AGE_BANDS };
+    } else if (patch.children_under_13 !== undefined) {
+      next.children_age_bands = trimAgeBandsToChildren(
+        next.children_age_bands || EMPTY_AGE_BANDS,
+        children,
+      );
     }
     onChange(next);
     if (ageError) setAgeError("");
@@ -122,11 +133,14 @@ export function DiscoveryStep({
   };
 
   const setBand = (key: keyof ChildrenAgeBands, v: number) => {
+    const bands = answers.children_age_bands || EMPTY_AGE_BANDS;
     set({
-      children_age_bands: {
-        ...(answers.children_age_bands || EMPTY_AGE_BANDS),
-        [key]: v,
-      },
+      children_age_bands: clampAgeBandValue(
+        bands,
+        key,
+        v,
+        answers.children_under_13 || 0,
+      ),
     });
   };
 
@@ -134,8 +148,7 @@ export function DiscoveryStep({
     const children = answers.children_under_13 || 0;
     if (children > 0) {
       const bands = answers.children_age_bands || EMPTY_AGE_BANDS;
-      const sum = AGE_BAND_LABELS.reduce((acc, { key }) => acc + (bands[key] || 0), 0);
-      if (sum !== children) {
+      if (ageBandsSum(bands) !== children) {
         setAgeError("Assign an age for each child");
         return;
       }
@@ -192,16 +205,19 @@ export function DiscoveryStep({
               <div className="sm:col-span-2 space-y-3 rounded-lg border border-slate-200 p-3">
                 <p className="text-sm font-medium text-slate-700">Ages of children</p>
                 <div className="grid gap-3 sm:grid-cols-2">
-                  {AGE_BAND_LABELS.map(({ key, label }) => (
-                    <Field key={key} label={label}>
-                      <StepperInput
-                        value={(answers.children_age_bands || EMPTY_AGE_BANDS)[key] || 0}
-                        onChange={(v) => setBand(key, v)}
-                        min={0}
-                        max={answers.children_under_13 || 0}
-                      />
-                    </Field>
-                  ))}
+                  {AGE_BAND_LABELS.map(({ key, label }) => {
+                    const bands = answers.children_age_bands || EMPTY_AGE_BANDS;
+                    return (
+                      <Field key={key} label={label}>
+                        <StepperInput
+                          value={bands[key] || 0}
+                          onChange={(v) => setBand(key, v)}
+                          min={0}
+                          max={maxForAgeBand(bands, key, answers.children_under_13 || 0)}
+                        />
+                      </Field>
+                    );
+                  })}
                 </div>
                 {ageError && <p className="text-sm text-amber-700">{ageError}</p>}
               </div>
