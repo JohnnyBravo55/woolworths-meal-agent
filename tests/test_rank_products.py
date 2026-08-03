@@ -35,3 +35,26 @@ def test_rank_prefers_in_stock():
     ]
     ranked = rank_products(matches, BrandPreference.MIXED, "salmon fillets")
     assert ranked[0].sku == "2"
+
+
+def test_rank_prefers_loose_tomatoes_over_bags():
+    matches = [
+        ProductMatch(
+            sku="bag",
+            product_name="woolworths fresh tomatoes",
+            size="600g",
+            unit_price=8.0,
+            unit="Each",
+            in_stock=True,
+        ),
+        ProductMatch(
+            sku="loose",
+            product_name="fresh tomatoes loose",
+            size="per kg",
+            unit_price=10.95,
+            unit="Kilogram",
+            in_stock=True,
+        ),
+    ]
+    ranked = rank_products(matches, BrandPreference.MIXED, "tomatoes")
+    assert ranked[0].sku == "loose"

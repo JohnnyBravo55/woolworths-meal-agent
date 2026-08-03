@@ -115,6 +115,10 @@ SEARCH_ALIASES: dict[str, list[str]] = {
     "chickpeas": ["chickpeas canned"],
     "cucumber": ["cucumber fresh", "cucumber each", "telegraph cucumber", "fresh vegetable cucumber"],
     "broccoli": ["broccoli head", "broccoli fresh"],
+    "tomatoes": ["tomatoes loose", "fresh tomatoes loose", "tomato each"],
+    "tomato": ["tomatoes loose", "fresh tomatoes loose", "tomato each"],
+    "carrots": ["carrots", "fresh vegetable carrots", "carrots loose"],
+    "carrot": ["carrots", "fresh vegetable carrots", "carrots loose"],
     "capsicum": ["capsicum red", "capsicum green", "fresh vegetable capsicum", "capsicum each", "capsicum"],
     "kimchi": ["kimchi", "kim chi", "korean kimchi"],
     "bok choy": [

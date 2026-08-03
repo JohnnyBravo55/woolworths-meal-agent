@@ -25,7 +25,11 @@ from meal_planner.shop_coverage import (
     heal_resolved_coverage,
 )
 from woolworths_adapter.client import WoolworthsAdapter, WoolworthsError
-from woolworths_adapter.quantities import normalize_cart_quantity
+from woolworths_adapter.quantities import (
+    normalize_cart_quantity,
+    produce_piece_grams,
+    product_is_produce_bag,
+)
 from meal_planner.meal_quality import is_leftover_meal, leftover_meal_needs_shop
 from woolworths_adapter.search_helpers import is_plausible_match, search_queries_for
 
@@ -90,6 +94,19 @@ def _freshness_score(ingredient_name: str, product_name: str) -> float:
     return 0.0
 
 
+def _produce_form_score(ingredient_name: str, match: ProductMatch) -> float:
+    """Prefer loose $/kg produce over multi-item bags when recipe asks for pieces."""
+    if produce_piece_grams(ingredient_name) is None:
+        return 0.0
+    name = (match.product_name or "").lower()
+    size = (match.size or "").lower()
+    if match.unit == "Kilogram" or "loose" in name or "per kg" in size:
+        return 2.0
+    if product_is_produce_bag(match):
+        return -2.0
+    return 0.5
+
+
 def _packaging_penalty(ingredient_name: str, product_name: str) -> float:
     """Prefer minimal packaging — blocks over snack portions."""
     ing = ingredient_name.lower()
@@ -140,20 +157,33 @@ def rank_products(
     ing = ingredient_name.lower()
     prefer_cheap_protein = any(x in ing for x in ("salmon", "fish fillet", "white fish"))
 
-    def score(match: ProductMatch) -> tuple[float, float, float, float, float]:
+    def score(match: ProductMatch) -> tuple[float, ...]:
         price_score = _unit_price_score(match)
+        form_score = _produce_form_score(ingredient_name, match)
         if prefer_cheap_protein:
             # Don't let home-brand premium $/kg beat affordable portion packs
             return (
                 1.0 if match.in_stock else 0.0,
                 price_score,
+                form_score,
                 _freshness_score(ingredient_name, match.product_name),
                 _brand_score(match, preference),
                 _packaging_penalty(ingredient_name, match.product_name),
             )
+        # For countable produce, prefer loose/kg over bags before brand preference
+        if produce_piece_grams(ingredient_name) is not None:
+            return (
+                1.0 if match.in_stock else 0.0,
+                form_score,
+                _freshness_score(ingredient_name, match.product_name),
+                _brand_score(match, preference),
+                _packaging_penalty(ingredient_name, match.product_name),
+                price_score,
+            )
         return (
             1.0 if match.in_stock else 0.0,
             _brand_score(match, preference),
+            form_score,
             _freshness_score(ingredient_name, match.product_name),
             _packaging_penalty(ingredient_name, match.product_name),
             price_score,

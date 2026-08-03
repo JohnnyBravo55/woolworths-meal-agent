@@ -61,3 +61,61 @@ def test_deduped_weight_sums_safely():
     qty, unit = normalize_cart_quantity(ing, _product("Kilogram"))
     assert unit == "Kilogram"
     assert qty <= 5.0
+
+
+def test_four_tomatoes_buys_one_bag_not_four():
+    """Recipe '4 tomatoes' must not become 4× 600g tomato bags."""
+    ing = Ingredient(name="tomatoes", quantity=4, unit="each")
+    bag = ProductMatch(
+        sku="339889",
+        product_name="woolworths fresh tomatoes",
+        size="600g",
+        unit_price=8.0,
+        unit="Each",
+    )
+    qty, unit = normalize_cart_quantity(ing, bag, household_size=2)
+    assert unit == "Each"
+    assert qty == 1.0
+
+
+def test_four_tomatoes_loose_buys_by_weight():
+    ing = Ingredient(name="tomatoes", quantity=4, unit="each")
+    loose = ProductMatch(
+        sku="149681",
+        product_name="fresh tomatoes loose",
+        size="per kg",
+        unit_price=10.95,
+        unit="Kilogram",
+    )
+    qty, unit = normalize_cart_quantity(ing, loose, household_size=2)
+    assert unit == "Kilogram"
+    assert 0.35 <= qty <= 0.7
+
+
+def test_four_carrots_buys_one_bag_not_four():
+    ing = Ingredient(name="carrots", quantity=4, unit="each")
+    bag = ProductMatch(
+        sku="283277",
+        product_name="woolworths fresh vegetable carrots",
+        size="1.5kg",
+        unit_price=3.5,
+        unit="Each",
+    )
+    qty, unit = normalize_cart_quantity(ing, bag, household_size=2)
+    assert unit == "Each"
+    assert qty == 1.0
+
+
+def test_carrot_bag_uses_weight_when_many_pieces_needed():
+    """Many carrots can require more than one bag if pack is small."""
+    ing = Ingredient(name="carrots", quantity=20, unit="each")
+    bag = ProductMatch(
+        sku="x",
+        product_name="fresh vegetable carrots bag",
+        size="500g",
+        unit_price=2.0,
+        unit="Each",
+    )
+    qty, unit = normalize_cart_quantity(ing, bag, household_size=4)
+    assert unit == "Each"
+    assert qty >= 2.0
