@@ -294,11 +294,7 @@ export function PriceCheckPanel() {
                 const shopUrl = storeShopUrl(basket.store);
                 return (
                   <div key={key} className="rounded-lg border border-slate-200">
-                    <button
-                      type="button"
-                      className="flex w-full items-center justify-between gap-2 px-3 py-3 text-left"
-                      onClick={() => setExpanded((e) => ({ ...e, [key]: !isOpen }))}
-                    >
+                    <div className="flex w-full items-center justify-between gap-2 px-3 py-3 text-left">
                       <span>
                         <span className="font-semibold">{basket.store.name}</span>
                         <span className="mt-0.5 block text-xs text-slate-500">
@@ -307,18 +303,31 @@ export function PriceCheckPanel() {
                         </span>
                       </span>
                       <span className="font-semibold">${basket.total.toFixed(2)}</span>
-                    </button>
-                    {shopUrl ? (
-                      <div className="px-3 pb-2">
+                    </div>
+                    <div className="flex items-center justify-between gap-3 px-3 pb-2">
+                      <button
+                        type="button"
+                        className={`rounded-lg border px-3 py-2 text-sm font-semibold ${
+                          isOpen
+                            ? "border-[var(--ww-green)] bg-emerald-50 text-slate-900"
+                            : "border-slate-300 bg-slate-50 text-slate-900"
+                        }`}
+                        aria-expanded={isOpen}
+                        onClick={() => setExpanded((e) => ({ ...e, [key]: !isOpen }))}
+                      >
+                        Item list {isOpen ? "▲" : "▼"}
+                      </button>
+                      {shopUrl ? (
                         <Button
                           type="button"
                           variant="secondary"
+                          className="ml-auto"
                           onClick={() => openUrl(shopUrl)}
                         >
                           Shop at {basket.store.name}
                         </Button>
-                      </div>
-                    ) : null}
+                      ) : null}
+                    </div>
                     {isOpen && (
                       <ul className="border-t border-slate-100 px-3 py-2 text-sm">
                         {basket.lines.map((line, i) => {
@@ -361,13 +370,7 @@ export function PriceCheckPanel() {
 
               {result.split && (
                 <div className="rounded-lg border border-emerald-200 bg-emerald-50">
-                  <button
-                    type="button"
-                    className="flex w-full items-center justify-between gap-2 px-3 py-3 text-left"
-                    onClick={() =>
-                      setExpanded((e) => ({ ...e, split: !e.split }))
-                    }
-                  >
+                  <div className="flex w-full items-center justify-between gap-2 px-3 py-3 text-left">
                     <span>
                       <span className="font-semibold text-emerald-950">Suggested split shop</span>
                       <span className="mt-0.5 block text-xs text-emerald-900">
@@ -379,7 +382,23 @@ export function PriceCheckPanel() {
                     <span className="font-semibold text-emerald-950">
                       ${result.split.total.toFixed(2)}
                     </span>
-                  </button>
+                  </div>
+                  <div className="flex items-center px-3 pb-2">
+                    <button
+                      type="button"
+                      className={`rounded-lg border px-3 py-2 text-sm font-semibold ${
+                        expanded.split
+                          ? "border-emerald-600 bg-white text-emerald-950"
+                          : "border-emerald-300 bg-white/80 text-emerald-950"
+                      }`}
+                      aria-expanded={!!expanded.split}
+                      onClick={() =>
+                        setExpanded((e) => ({ ...e, split: !e.split }))
+                      }
+                    >
+                      Item list {expanded.split ? "▲" : "▼"}
+                    </button>
+                  </div>
                   {expanded.split && (
                     <ul className="border-t border-emerald-100 px-3 py-2 text-sm">
                       {result.split.assignments.map((a, i) => {

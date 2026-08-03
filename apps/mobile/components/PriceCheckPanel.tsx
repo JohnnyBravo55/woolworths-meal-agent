@@ -282,10 +282,7 @@ export function PriceCheckPanel() {
                 ).length;
                 return (
                   <View key={key} style={styles.resultCard}>
-                    <Pressable
-                      onPress={() => setExpanded((e) => ({ ...e, [key]: !isOpen }))}
-                      style={styles.resultHeader}
-                    >
+                    <View style={styles.resultHeader}>
                       <View style={{ flex: 1 }}>
                         <Text style={styles.storeName}>{basket.store.name}</Text>
                         <Text style={styles.muted}>
@@ -297,12 +294,23 @@ export function PriceCheckPanel() {
                         ) : null}
                       </View>
                       <Text style={styles.total}>${basket.total.toFixed(2)}</Text>
-                    </Pressable>
+                    </View>
                     <View style={styles.shopBar}>
+                      <Pressable
+                        onPress={() => setExpanded((e) => ({ ...e, [key]: !isOpen }))}
+                        style={[styles.itemListTab, isOpen && styles.itemListTabOpen]}
+                        accessibilityRole="button"
+                        accessibilityState={{ expanded: isOpen }}
+                      >
+                        <Text style={styles.itemListTabText}>
+                          Item list {isOpen ? "▲" : "▼"}
+                        </Text>
+                      </Pressable>
                       <Button
                         title={`Shop at ${basket.store.name}`}
                         variant="secondary"
                         onPress={() => shopAt(basket.store)}
+                        style={styles.shopAtBtn}
                       />
                     </View>
                     {isOpen
@@ -341,10 +349,7 @@ export function PriceCheckPanel() {
 
           {result?.split ? (
             <View style={[styles.resultCard, styles.splitCard]}>
-              <Pressable
-                onPress={() => setExpanded((e) => ({ ...e, split: !e.split }))}
-                style={styles.resultHeader}
-              >
+              <View style={styles.resultHeader}>
                 <View style={{ flex: 1 }}>
                   <Text style={styles.storeName}>Suggested split shop</Text>
                   <Text style={styles.muted}>
@@ -353,7 +358,19 @@ export function PriceCheckPanel() {
                   </Text>
                 </View>
                 <Text style={styles.total}>${result.split.total.toFixed(2)}</Text>
-              </Pressable>
+              </View>
+              <View style={styles.shopBar}>
+                <Pressable
+                  onPress={() => setExpanded((e) => ({ ...e, split: !e.split }))}
+                  style={[styles.itemListTab, expanded.split && styles.itemListTabOpen]}
+                  accessibilityRole="button"
+                  accessibilityState={{ expanded: !!expanded.split }}
+                >
+                  <Text style={styles.itemListTabText}>
+                    Item list {expanded.split ? "▲" : "▼"}
+                  </Text>
+                </Pressable>
+              </View>
               {expanded.split
                 ? result.split.assignments.map((a, i) => {
                     const bKey = lineBoughtKey(a.store_id, a.ingredient, i);
@@ -472,8 +489,37 @@ const styles = StyleSheet.create({
     paddingVertical: 12,
   },
   shopBar: {
+    flexDirection: "row",
+    alignItems: "center",
+    justifyContent: "space-between",
+    gap: 10,
     paddingHorizontal: 12,
     paddingBottom: 10,
+  },
+  itemListTab: {
+    borderRadius: 10,
+    borderWidth: 1,
+    borderColor: "#cbd5e1",
+    backgroundColor: "#f8fafc",
+    paddingHorizontal: 12,
+    paddingVertical: 10,
+    flexShrink: 0,
+  },
+  itemListTabOpen: {
+    backgroundColor: "#ecfdf5",
+    borderColor: theme.green,
+  },
+  itemListTabText: {
+    fontSize: 13,
+    fontWeight: "700",
+    color: theme.text,
+  },
+  shopAtBtn: {
+    marginLeft: "auto",
+    minWidth: 0,
+    flexShrink: 1,
+    paddingHorizontal: 12,
+    paddingVertical: 10,
   },
   total: { fontWeight: "800", fontSize: 15, color: theme.text },
   lineRow: {
