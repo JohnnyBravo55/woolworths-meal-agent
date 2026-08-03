@@ -72,11 +72,11 @@ class MealAgentOrchestrator:
         self.state.advance_to(AgentPhase.PLAN_DRAFT)
         return profile
 
-    async def generate_plan(self, profile: UserProfile) -> MealPlan:
+    async def generate_plan(self, profile: UserProfile, *, on_llm_progress=None) -> MealPlan:
         # Clear before awaiting the LLM so a dropped SSE stream cannot recover the
         # previous chef's plan mid-generation.
         self.clear_plan_downstream()
-        plan = await self.planner.generate(profile)
+        plan = await self.planner.generate(profile, on_llm_progress=on_llm_progress)
         self.state.meal_plan = plan
         self.state.advance_to(AgentPhase.PLAN_APPROVAL)
         return plan

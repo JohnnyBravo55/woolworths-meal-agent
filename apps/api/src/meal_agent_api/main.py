@@ -211,10 +211,21 @@ async def health_openai():
         }
 
     try:
-        from openai import AsyncOpenAI
+        # Probe the same chat.completions path meal planning uses — models.list
+        # can succeed while chat is degraded.
+        from meal_planner.openai_client import stream_chat_json
 
-        client = AsyncOpenAI(api_key=api_key, timeout=20.0, max_retries=0)
-        await client.models.list()
+        content = await stream_chat_json(
+            model=model,
+            system="Reply with compact JSON only.",
+            user='Return {"ok": true}',
+            api_key=api_key,
+            timeout=20.0,
+            max_tokens=32,
+            temperature=0,
+        )
+        if "ok" not in (content or "").lower():
+            raise RuntimeError(f"Unexpected OpenAI chat probe response: {content!r}")
         return {
             "status": "ok",
             "openai_configured": True,
@@ -716,27 +727,54 @@ async def plan_generate(
             {"message": "Consulting your chef…", "done": 2, "total": 5, "phase": "generate"},
         )
         try:
-            # Heartbeats while the LLM runs — keeps Cloudflare/Render from closing idle SSE.
-            # Comment pings every few seconds (status events are less frequent).
-            task = asyncio.create_task(session.orchestrator.generate_plan(profile))
+            # Stream OpenAI tokens into progress so proxies stay warm and the UI
+            # shows the chef is actually responding (not stuck before first byte).
+            progress_queue: asyncio.Queue[int] = asyncio.Queue()
+
+            async def on_llm_progress(chars: int) -> None:
+                await progress_queue.put(chars)
+
+            task = asyncio.create_task(
+                session.orchestrator.generate_plan(profile, on_llm_progress=on_llm_progress)
+            )
             last_status = 0.0
+            last_chars = 0
             while not task.done():
                 try:
-                    await asyncio.wait_for(asyncio.shield(task), timeout=3.0)
+                    chars = await asyncio.wait_for(progress_queue.get(), timeout=3.0)
+                    last_chars = chars
+                    yield _sse_event(
+                        "status",
+                        {
+                            "message": f"Chef is writing your plan… ({chars:,} chars)",
+                            "done": 3,
+                            "total": 5,
+                            "phase": "generate",
+                            "chars": chars,
+                        },
+                    )
                 except asyncio.TimeoutError:
                     yield _sse_ping()
                     now = asyncio.get_running_loop().time()
                     if now - last_status >= 8.0:
                         last_status = now
+                        msg = (
+                            f"Chef is writing your plan… ({last_chars:,} chars)"
+                            if last_chars
+                            else "Waiting for OpenAI to start streaming…"
+                        )
                         yield _sse_event(
                             "status",
                             {
-                                "message": "Still cooking with your chef…",
+                                "message": msg,
                                 "done": 3,
                                 "total": 5,
                                 "phase": "generate",
+                                "chars": last_chars,
                             },
                         )
+            while not progress_queue.empty():
+                progress_queue.get_nowait()
             plan = await task
             yield _sse_event(
                 "status",
