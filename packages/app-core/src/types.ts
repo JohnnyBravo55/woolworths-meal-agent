@@ -8,8 +8,18 @@ export type AgentPhase =
   | "recipes"
   | "complete";
 
+export type ChildrenAgeBands = {
+  "1-3": number;
+  "4-6": number;
+  "7-9": number;
+  "10-12": number;
+};
+
 export interface DiscoveryAnswers {
   household_size: number;
+  adults: number;
+  children_under_13: number;
+  children_age_bands: ChildrenAgeBands;
   days: number;
   dinner_count: number;
   lunch_count: number;
@@ -195,8 +205,18 @@ export interface WoolworthsCookie {
   sameSite: string;
 }
 
+export const EMPTY_AGE_BANDS: ChildrenAgeBands = {
+  "1-3": 0,
+  "4-6": 0,
+  "7-9": 0,
+  "10-12": 0,
+};
+
 export const DEFAULT_ANSWERS: DiscoveryAnswers = {
   household_size: 2,
+  adults: 2,
+  children_under_13: 0,
+  children_age_bands: { ...EMPTY_AGE_BANDS },
   days: 7,
   dinner_count: 6,
   lunch_count: 0,
@@ -225,9 +245,30 @@ export const STEPS = [
   { id: 5, label: "Cart", key: "cart" },
 ] as const;
 
-export function profileToAnswers(data: Record<string, unknown>): DiscoveryAnswers {
+function parseAgeBands(raw: unknown): ChildrenAgeBands {
+  const src = raw && typeof raw === "object" ? (raw as Record<string, unknown>) : {};
   return {
-    household_size: Number(data.household_size ?? 2),
+    "1-3": Number(src["1-3"] ?? src.band_1_3 ?? 0) || 0,
+    "4-6": Number(src["4-6"] ?? src.band_4_6 ?? 0) || 0,
+    "7-9": Number(src["7-9"] ?? src.band_7_9 ?? 0) || 0,
+    "10-12": Number(src["10-12"] ?? src.band_10_12 ?? 0) || 0,
+  };
+}
+
+export function profileToAnswers(data: Record<string, unknown>): DiscoveryAnswers {
+  const hasAdults = data.adults !== undefined && data.adults !== null;
+  const hasChildren = data.children_under_13 !== undefined && data.children_under_13 !== null;
+  const householdSize = Number(data.household_size ?? 2) || 2;
+  const adults = hasAdults || hasChildren ? Number(data.adults ?? 2) || 0 : householdSize;
+  const children_under_13 =
+    hasAdults || hasChildren ? Number(data.children_under_13 ?? 0) || 0 : 0;
+  const children_age_bands =
+    children_under_13 > 0 ? parseAgeBands(data.children_age_bands) : { ...EMPTY_AGE_BANDS };
+  return {
+    household_size: Math.max(1, adults + children_under_13),
+    adults,
+    children_under_13,
+    children_age_bands,
     days: Number(data.days ?? 7),
     dinner_count: Number(data.dinner_count ?? 5),
     lunch_count: Number(data.lunch_count ?? 0),

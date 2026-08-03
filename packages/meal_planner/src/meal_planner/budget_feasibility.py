@@ -29,7 +29,7 @@ class BudgetFeasibility:
 def estimate_plan_cost(profile: UserProfile) -> float:
     mr = profile.meals_requested
     lunch_key = "lunch_practical" if profile.lunch_mode == LunchMode.PRACTICAL else "lunch_original"
-    scale = max(1.0, profile.household_size / 2.0)
+    scale = max(1.0, float(profile.adult_equivalent_servings or profile.household_size) / 2.0)
     total = (
         mr.dinner * _COST_PER_MEAL_NZD["dinner"]
         + mr.lunch * _COST_PER_MEAL_NZD[lunch_key]

@@ -653,7 +653,10 @@ async def set_profile(
             status_code=403,
             detail="Premium chefs require an active subscription. Sign in as a subscriber or use Sam (Basic).",
         )
-    profile = await session.orchestrator.run_discovery(body.to_answers_dict())
+    try:
+        profile = await session.orchestrator.run_discovery(body.to_answers_dict())
+    except ValueError as exc:
+        raise HTTPException(status_code=400, detail=str(exc)) from exc
     return {"profile": profile, "state": StateResponse.from_session(session)}
 
 

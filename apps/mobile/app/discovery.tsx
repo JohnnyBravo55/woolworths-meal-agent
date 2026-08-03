@@ -11,7 +11,22 @@ import { getApiBaseUrl } from "@/lib/config";
 import { api } from "@/lib/api";
 import { confirmSessionLoss } from "@/lib/confirm-session-loss";
 import { useWizardNav } from "@/lib/useWizardNav";
-import { profileToAnswers, type DiscoveryAnswers } from "@meal-agent/app-core";
+import {
+  EMPTY_AGE_BANDS,
+  profileToAnswers,
+  type ChildrenAgeBands,
+  type DiscoveryAnswers,
+} from "@meal-agent/app-core";
+import { useState } from "react";
+
+const AGE_BAND_LABELS: { key: keyof ChildrenAgeBands; label: string }[] = [
+  { key: "1-3", label: "1–3 years" },
+  { key: "4-6", label: "4–6 years" },
+  { key: "7-9", label: "7–9 years" },
+  { key: "10-12", label: "10–12 years" },
+];
+
+const MAX_HOUSEHOLD = 8;
 
 function StepperInput({
   value,
@@ -64,9 +79,53 @@ export default function DiscoveryScreen() {
     markStepReached,
   } = useApp();
   const { showForward, goForward } = useWizardNav();
-  const set = (patch: Partial<DiscoveryAnswers>) => setAnswers({ ...answers, ...patch });
+  const [ageError, setAgeError] = useState("");
+
+  const set = (patch: Partial<DiscoveryAnswers>) => {
+    const next = { ...answers, ...patch };
+    const adults = Math.max(0, next.adults ?? 0);
+    const children = Math.max(0, next.children_under_13 ?? 0);
+    next.adults = adults;
+    next.children_under_13 = children;
+    next.household_size = Math.max(1, adults + children);
+    if (children === 0) {
+      next.children_age_bands = { ...EMPTY_AGE_BANDS };
+    }
+    setAnswers(next);
+    if (ageError) setAgeError("");
+  };
+
+  const setAdults = (v: number) => {
+    const maxAdults = Math.max(1, MAX_HOUSEHOLD - (answers.children_under_13 || 0));
+    set({ adults: Math.min(Math.max(1, v), maxAdults) });
+  };
+
+  const setChildren = (v: number) => {
+    const maxChildren = Math.max(0, MAX_HOUSEHOLD - (answers.adults || 0));
+    set({ children_under_13: Math.min(v, maxChildren) });
+  };
+
+  const setBand = (key: keyof ChildrenAgeBands, v: number) => {
+    set({
+      children_age_bands: {
+        ...(answers.children_age_bands || EMPTY_AGE_BANDS),
+        [key]: v,
+      },
+    });
+  };
 
   const continueNext = async () => {
+    const children = answers.children_under_13 || 0;
+    if (children > 0) {
+      const bands = answers.children_age_bands || EMPTY_AGE_BANDS;
+      const sum = AGE_BAND_LABELS.reduce((acc, { key }) => acc + (bands[key] || 0), 0);
+      if (sum !== children) {
+        setAgeError("Assign an age for each child");
+        setError("Assign an age for each child");
+        return;
+      }
+    }
+    setAgeError("");
     if (
       needsSessionLossWarning({
         mealPlan,
@@ -109,12 +168,22 @@ export default function DiscoveryScreen() {
           <Muted>Household, meals, diet and budget</Muted>
         </CardHeader>
         <CardBody>
-          <Field label="People">
+          <Field label="Adult portions">
+            <Muted>People 13+</Muted>
             <StepperInput
-              value={answers.household_size}
-              onChange={(v) => set({ household_size: v })}
+              value={answers.adults ?? 2}
+              onChange={setAdults}
               min={1}
-              max={8}
+              max={MAX_HOUSEHOLD}
+            />
+          </Field>
+          <Field label="Child portions">
+            <Muted>Children 12 and under</Muted>
+            <StepperInput
+              value={answers.children_under_13 ?? 0}
+              onChange={setChildren}
+              min={0}
+              max={MAX_HOUSEHOLD}
             />
           </Field>
           <Field label="Days">
@@ -132,6 +201,22 @@ export default function DiscoveryScreen() {
               ))}
             </View>
           </Field>
+          {(answers.children_under_13 ?? 0) > 0 && (
+            <View style={{ marginTop: 8, gap: 10 }}>
+              <Text style={styles.label}>Ages of children</Text>
+              {AGE_BAND_LABELS.map(({ key, label }) => (
+                <Field key={key} label={label}>
+                  <StepperInput
+                    value={(answers.children_age_bands || EMPTY_AGE_BANDS)[key] || 0}
+                    onChange={(v) => setBand(key, v)}
+                    min={0}
+                    max={answers.children_under_13 || 0}
+                  />
+                </Field>
+              ))}
+              {!!ageError && <Text style={{ color: "#b45309", fontSize: 13 }}>{ageError}</Text>}
+            </View>
+          )}
         </CardBody>
       </Card>
 

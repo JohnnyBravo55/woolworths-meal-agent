@@ -249,16 +249,33 @@ _TEMPLATE_SNACKS = [
 _DAYS = ["Monday", "Tuesday", "Wednesday", "Thursday", "Friday", "Saturday", "Sunday"]
 
 
-def _template_to_meal(template: dict, slot: MealSlot, day: str, simplicity: SimplicityLevel) -> Meal:
+_TEMPLATE_BASELINE_SERVINGS = 2.0
+
+
+def _template_to_meal(
+    template: dict,
+    slot: MealSlot,
+    day: str,
+    simplicity: SimplicityLevel,
+    *,
+    servings: float = _TEMPLATE_BASELINE_SERVINGS,
+) -> Meal:
+    scale = max(0.5, float(servings or _TEMPLATE_BASELINE_SERVINGS)) / _TEMPLATE_BASELINE_SERVINGS
+    ingredients: list[Ingredient] = []
+    for name, qty, unit in template["ingredients"]:
+        q = float(qty)
+        unit_l = str(unit).lower()
+        # Scale weight/volume and multi-count lines; leave single packs alone.
+        if unit_l in {"g", "kg", "ml", "l"} or (unit_l in {"each", "fillet", "fillets"} and q > 1):
+            q = round(q * scale, 2) if unit_l in {"kg", "l"} else max(1.0, round(q * scale))
+        ingredients.append(Ingredient(name=name, quantity=q, unit=unit))
     return Meal(
         name=template["name"],
         slot=slot,
         day_label=day,
         description=template["description"],
         prep_time_minutes=25 if simplicity == SimplicityLevel.SIMPLE else 40,
-        ingredients=[
-            Ingredient(name=n, quantity=float(q), unit=u) for n, q, u in template["ingredients"]
-        ],
+        ingredients=ingredients,
         steps=template["steps"],
     )
 
@@ -301,7 +318,15 @@ def _enforce_meal_counts(plan: MealPlan, profile: UserProfile) -> MealPlan:
             template = pool[t_idx % len(pool)]
             day = _DAYS[day_idx % len(_DAYS)]
             day_idx += 1
-            kept.append(_template_to_meal(template, slot, day, profile.simplicity))
+            kept.append(
+                _template_to_meal(
+                    template,
+                    slot,
+                    day,
+                    profile.simplicity,
+                    servings=profile.adult_equivalent_servings,
+                )
+            )
             t_idx += 1
         for i, meal in enumerate(kept):
             meal.day_label = _DAYS[i % len(_DAYS)]
@@ -466,11 +491,38 @@ class MealPlanner:
                 "protein, carb, and vegetables (same balance rules as dinner)."
             )
 
+        kid_friendly_note = (
+            "No extra kid-friendly constraints (no children 12 and under)."
+        )
+        if profile.children_under_13 > 0:
+            kid_friendly_note = (
+                "KID-FRIENDLY HARD BIAS: At least one child 12 or under is in the household. "
+                "Plan mild, familiar, family-friendly meals for the WHOLE plan. "
+                "Avoid spicy heat, very adventurous or 'out there' dishes, and strongly "
+                "fermented or intense flavours by default. Keep the chef's cuisine identity "
+                "at a gentler level (e.g. Asian-inspired without heavy chilli). "
+                "OVERRIDE: If likes or other_instructions explicitly ask for spice, heat, "
+                "or adventurous food, honour those user instructions."
+            )
+
         return json.dumps(
             {
                 "task": "Create a meal plan",
                 "constraints": {
                     "household_size": profile.household_size,
+                    "adults": profile.adults,
+                    "children_under_13": profile.children_under_13,
+                    "children_age_bands": profile.children_age_bands.as_factor_map(),
+                    "adult_equivalent_servings": profile.adult_equivalent_servings,
+                    "portion_rules": (
+                        "Size ALL meal ingredients for adult_equivalent_servings "
+                        f"({profile.adult_equivalent_servings} servings). "
+                        "This value is already ceiled to the next 0.5 and may be fractional "
+                        "(children under 13 are partial adult portions). "
+                        "Do not size as if every person were a full adult unless "
+                        "adult_equivalent_servings equals household_size."
+                    ),
+                    "kid_friendly_rules": kid_friendly_note,
                     "days": profile.days,
                     "meals_requested": profile.meals_requested.model_dump(),
                     "lunch_mode": profile.lunch_mode.value,

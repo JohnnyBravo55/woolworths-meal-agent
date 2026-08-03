@@ -42,9 +42,26 @@ def test_filter_allergens_blocks_matching_ingredients():
 @pytest.mark.asyncio
 async def test_template_planner_generates_meals():
     planner = MealPlanner(api_key=None)
-    plan = await planner.generate(_profile(dinner=2, lunch=1))
+    plan = await planner.generate(_profile(meals_requested=MealsRequested(dinner=2, lunch=1)))
     assert len(plan.meals) == 3
     assert len(plan.shared_ingredients) > 0
+
+
+def test_build_prompt_includes_child_portion_constraints():
+    planner = MealPlanner(api_key=None)
+    profile = _profile(
+        adults=2,
+        children_under_13=2,
+        children_age_bands={"1-3": 0, "4-6": 1, "7-9": 1, "10-12": 0},
+    )
+    import json
+
+    payload = json.loads(planner._build_prompt(profile))
+    constraints = payload["constraints"]
+    assert constraints["adult_equivalent_servings"] == 3.5
+    assert constraints["children_under_13"] == 2
+    assert "KID-FRIENDLY HARD BIAS" in constraints["kid_friendly_rules"]
+    assert "adult_equivalent_servings" in constraints["portion_rules"]
 
 
 @pytest.mark.asyncio

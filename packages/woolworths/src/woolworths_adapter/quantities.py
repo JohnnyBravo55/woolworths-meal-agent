@@ -124,12 +124,13 @@ def normalize_cart_quantity(
     ingredient: Ingredient,
     product: ProductMatch,
     *,
-    household_size: int = 2,
+    household_size: float = 2,
 ) -> tuple[float, str]:
     """
     Convert a recipe ingredient line into a safe Woolworths cart quantity.
 
     The main bug this fixes: 500g chicken becoming 500x chicken packs in cart.
+    ``household_size`` may be adult-equivalent servings (fractional, e.g. 3.5).
     """
     grams = _grams_from_ingredient(ingredient)
     product_unit = product.unit if product.unit in ("Each", "Kilogram") else "Each"
@@ -137,7 +138,7 @@ def normalize_cart_quantity(
     unit = _normalize_unit(ingredient.unit)
     qty = ingredient.quantity
     name_lower = ingredient.name.lower()
-    people = max(1, int(household_size or 2))
+    people = max(1.0, float(household_size or 2))
 
     if grams is not None:
         kg = grams / 1000.0

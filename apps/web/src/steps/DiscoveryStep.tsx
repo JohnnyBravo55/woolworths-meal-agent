@@ -1,7 +1,18 @@
-import type { DiscoveryAnswers } from "../types";
+import { useState } from "react";
+import type { ChildrenAgeBands, DiscoveryAnswers } from "../types";
+import { EMPTY_AGE_BANDS } from "../types";
 import { Button } from "../components/ui/Button";
 import { Card, CardBody, CardHeader } from "../components/ui/Card";
 import { Badge } from "../components/ui/Badge";
+
+const AGE_BAND_LABELS: { key: keyof ChildrenAgeBands; label: string }[] = [
+  { key: "1-3", label: "1–3 years" },
+  { key: "4-6", label: "4–6 years" },
+  { key: "7-9", label: "7–9 years" },
+  { key: "10-12", label: "10–12 years" },
+];
+
+const MAX_HOUSEHOLD = 8;
 
 interface Props {
   answers: DiscoveryAnswers;
@@ -84,7 +95,54 @@ export function DiscoveryStep({
   loading,
   woolworthsConnected,
 }: Props) {
-  const set = (patch: Partial<DiscoveryAnswers>) => onChange({ ...answers, ...patch });
+  const [ageError, setAgeError] = useState("");
+
+  const set = (patch: Partial<DiscoveryAnswers>) => {
+    const next = { ...answers, ...patch };
+    const adults = Math.max(0, next.adults ?? 0);
+    const children = Math.max(0, next.children_under_13 ?? 0);
+    next.adults = adults;
+    next.children_under_13 = children;
+    next.household_size = Math.max(1, adults + children);
+    if (children === 0) {
+      next.children_age_bands = { ...EMPTY_AGE_BANDS };
+    }
+    onChange(next);
+    if (ageError) setAgeError("");
+  };
+
+  const setAdults = (v: number) => {
+    const maxAdults = Math.max(0, MAX_HOUSEHOLD - (answers.children_under_13 || 0));
+    set({ adults: Math.min(v, maxAdults) });
+  };
+
+  const setChildren = (v: number) => {
+    const maxChildren = Math.max(0, MAX_HOUSEHOLD - (answers.adults || 0));
+    set({ children_under_13: Math.min(v, maxChildren) });
+  };
+
+  const setBand = (key: keyof ChildrenAgeBands, v: number) => {
+    set({
+      children_age_bands: {
+        ...(answers.children_age_bands || EMPTY_AGE_BANDS),
+        [key]: v,
+      },
+    });
+  };
+
+  const handleContinue = () => {
+    const children = answers.children_under_13 || 0;
+    if (children > 0) {
+      const bands = answers.children_age_bands || EMPTY_AGE_BANDS;
+      const sum = AGE_BAND_LABELS.reduce((acc, { key }) => acc + (bands[key] || 0), 0);
+      if (sum !== children) {
+        setAgeError("Assign an age for each child");
+        return;
+      }
+    }
+    setAgeError("");
+    onContinue();
+  };
 
   return (
     <div className="grid gap-6 lg:grid-cols-3">
@@ -94,12 +152,22 @@ export function DiscoveryStep({
             <h2 className="text-lg font-semibold">Household</h2>
           </CardHeader>
           <CardBody className="grid gap-4 sm:grid-cols-2">
-            <Field label="People">
+            <Field label="Adult portions">
+              <p className="mb-1 text-xs text-slate-500">People 13+</p>
               <StepperInput
-                value={answers.household_size}
-                onChange={(v) => set({ household_size: v })}
+                value={answers.adults ?? 2}
+                onChange={setAdults}
                 min={1}
-                max={8}
+                max={MAX_HOUSEHOLD}
+              />
+            </Field>
+            <Field label="Child portions">
+              <p className="mb-1 text-xs text-slate-500">Children 12 and under</p>
+              <StepperInput
+                value={answers.children_under_13 ?? 0}
+                onChange={setChildren}
+                min={0}
+                max={MAX_HOUSEHOLD}
               />
             </Field>
             <Field label="Days">
@@ -120,6 +188,24 @@ export function DiscoveryStep({
                 ))}
               </div>
             </Field>
+            {(answers.children_under_13 ?? 0) > 0 && (
+              <div className="sm:col-span-2 space-y-3 rounded-lg border border-slate-200 p-3">
+                <p className="text-sm font-medium text-slate-700">Ages of children</p>
+                <div className="grid gap-3 sm:grid-cols-2">
+                  {AGE_BAND_LABELS.map(({ key, label }) => (
+                    <Field key={key} label={label}>
+                      <StepperInput
+                        value={(answers.children_age_bands || EMPTY_AGE_BANDS)[key] || 0}
+                        onChange={(v) => setBand(key, v)}
+                        min={0}
+                        max={answers.children_under_13 || 0}
+                      />
+                    </Field>
+                  ))}
+                </div>
+                {ageError && <p className="text-sm text-amber-700">{ageError}</p>}
+              </div>
+            )}
           </CardBody>
         </Card>
 
@@ -341,7 +427,7 @@ export function DiscoveryStep({
               <Button variant="secondary" onClick={onSaveProfile}>
                 Save profile
               </Button>
-              <Button onClick={onContinue} disabled={loading}>
+              <Button onClick={handleContinue} disabled={loading}>
                 {loading ? "Saving…" : "Choose your chef →"}
               </Button>
             </div>

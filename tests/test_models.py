@@ -21,6 +21,29 @@ def test_user_profile_normalizes_allergies():
     assert profile.allergies == ["peanuts", "gluten"]
 
 
+def test_legacy_household_size_becomes_all_adults():
+    profile = UserProfile(
+        household_size=3,
+        meals_requested=MealsRequested(dinner=5),
+        budget_nzd=100,
+    )
+    assert profile.adults == 3
+    assert profile.children_under_13 == 0
+    assert profile.adult_equivalent_servings == 3.0
+
+
+def test_mixed_ages_compute_servings_and_headcount():
+    profile = UserProfile(
+        adults=2,
+        children_under_13=2,
+        children_age_bands={"1-3": 0, "4-6": 1, "7-9": 1, "10-12": 0},
+        meals_requested=MealsRequested(dinner=5),
+        budget_nzd=100,
+    )
+    assert profile.household_size == 4
+    assert profile.adult_equivalent_servings == 3.5
+
+
 def test_meals_requested_total():
     req = MealsRequested(breakfast=2, lunch=3, dinner=5, snacks=1)
     assert req.total_meals() == 11

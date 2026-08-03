@@ -70,13 +70,13 @@ def needed_kg(
     quantity: float,
     unit: str,
     *,
-    household_size: int = 2,
+    household_size: float = 2,
 ) -> float:
     """Estimate kilograms needed for a shop-list protein/produce line."""
     qty = float(quantity or 1) or 1.0
     u = _norm_unit(unit)
     name = ingredient.lower()
-    people = max(1, int(household_size or 2))
+    people = max(1.0, float(household_size or 2))
 
     if u in {"kg", "kilogram", "kilograms", "kilo"}:
         kg = qty

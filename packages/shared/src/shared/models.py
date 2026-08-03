@@ -3,9 +3,11 @@
 from __future__ import annotations
 
 from enum import Enum
-from typing import Literal
+from typing import Any, Literal
 
-from pydantic import BaseModel, Field, field_validator
+from pydantic import BaseModel, ConfigDict, Field, field_validator, model_validator
+
+from shared.portions import adult_equivalent_servings as compute_adult_equivalent_servings
 
 
 class AgentPhase(str, Enum):
@@ -60,8 +62,35 @@ class MealsRequested(BaseModel):
         return self.breakfast + self.lunch + self.dinner + self.snacks
 
 
+class ChildrenAgeBands(BaseModel):
+    """Counts of children in each age band (12 and under)."""
+
+    model_config = ConfigDict(populate_by_name=True, serialize_by_alias=True)
+
+    band_1_3: int = Field(default=0, ge=0, alias="1-3")
+    band_4_6: int = Field(default=0, ge=0, alias="4-6")
+    band_7_9: int = Field(default=0, ge=0, alias="7-9")
+    band_10_12: int = Field(default=0, ge=0, alias="10-12")
+
+    def as_factor_map(self) -> dict[str, int]:
+        return {
+            "1-3": self.band_1_3,
+            "4-6": self.band_4_6,
+            "7-9": self.band_7_9,
+            "10-12": self.band_10_12,
+        }
+
+
+def _empty_age_bands() -> ChildrenAgeBands:
+    return ChildrenAgeBands()
+
+
 class UserProfile(BaseModel):
     household_size: int = Field(ge=1, le=20)
+    adults: int = Field(default=2, ge=0, le=20)
+    children_under_13: int = Field(default=0, ge=0, le=20)
+    children_age_bands: ChildrenAgeBands = Field(default_factory=_empty_age_bands)
+    adult_equivalent_servings: float = Field(default=2.0, ge=0)
     days: int = Field(default=7, ge=1, le=14)
     meals_requested: MealsRequested
     dietary_preferences: list[str] = Field(default_factory=list)
@@ -82,6 +111,44 @@ class UserProfile(BaseModel):
     lunch_mode: LunchMode = LunchMode.ORIGINAL
     equipment: list[str] = Field(default_factory=list)
     chef_id: str = "basic_sam"
+
+    @model_validator(mode="before")
+    @classmethod
+    def sync_household_composition(cls, data: Any) -> Any:
+        if not isinstance(data, dict):
+            return data
+        has_adults = "adults" in data and data["adults"] is not None
+        has_children = "children_under_13" in data and data["children_under_13"] is not None
+        household_size = data.get("household_size")
+        if not has_adults and not has_children and household_size is not None:
+            data["adults"] = int(household_size)
+            data["children_under_13"] = 0
+            data.setdefault("children_age_bands", {})
+        adults = max(0, int(data.get("adults", 2) or 0))
+        children = max(0, int(data.get("children_under_13", 0) or 0))
+        if adults + children < 1:
+            adults = max(1, adults)
+        data["adults"] = adults
+        data["children_under_13"] = children
+        data["household_size"] = adults + children
+        bands_raw = data.get("children_age_bands") or {}
+        if isinstance(bands_raw, ChildrenAgeBands):
+            band_map = bands_raw.as_factor_map()
+        elif isinstance(bands_raw, dict):
+            band_map = {
+                "1-3": int(bands_raw.get("1-3", bands_raw.get("band_1_3", 0)) or 0),
+                "4-6": int(bands_raw.get("4-6", bands_raw.get("band_4_6", 0)) or 0),
+                "7-9": int(bands_raw.get("7-9", bands_raw.get("band_7_9", 0)) or 0),
+                "10-12": int(bands_raw.get("10-12", bands_raw.get("band_10_12", 0)) or 0),
+            }
+            data["children_age_bands"] = band_map
+        else:
+            band_map = {"1-3": 0, "4-6": 0, "7-9": 0, "10-12": 0}
+        if children == 0:
+            band_map = {"1-3": 0, "4-6": 0, "7-9": 0, "10-12": 0}
+            data["children_age_bands"] = band_map
+        data["adult_equivalent_servings"] = compute_adult_equivalent_servings(adults, band_map)
+        return data
 
     @field_validator(
         "allergies", "mandatory_items", "dislikes", "likes", "pantry_items", mode="before"

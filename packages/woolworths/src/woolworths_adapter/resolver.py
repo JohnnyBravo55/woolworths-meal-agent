@@ -175,7 +175,9 @@ class ProductResolver:
         unit_price = estimate_price(ingredient.name)
         # Fake product for normalization — offline always buys by Each
         fake = ProductMatch(sku="OFFLINE", product_name=ingredient.name, unit_price=unit_price)
-        quantity, unit = normalize_cart_quantity(ingredient, fake, household_size=profile.household_size)
+        quantity, unit = normalize_cart_quantity(
+            ingredient, fake, household_size=profile.adult_equivalent_servings
+        )
         return GroceryLineItem(
             ingredient=ingredient.name,
             sku="OFFLINE",
@@ -386,7 +388,7 @@ class ProductResolver:
     ) -> GroceryLineItem:
         unit_price = _effective_price(best)
         quantity, cart_unit = normalize_cart_quantity(
-            attempt_ing, best, household_size=profile.household_size
+            attempt_ing, best, household_size=profile.adult_equivalent_servings
         )
         return GroceryLineItem(
             ingredient=ingredient.name,

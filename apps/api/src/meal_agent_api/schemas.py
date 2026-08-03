@@ -15,6 +15,11 @@ from shared.models import (
 
 class DiscoveryAnswers(BaseModel):
     household_size: int = 2
+    adults: int = 2
+    children_under_13: int = 0
+    children_age_bands: dict[str, int] = Field(
+        default_factory=lambda: {"1-3": 0, "4-6": 0, "7-9": 0, "10-12": 0}
+    )
     days: int = 7
     dinner_count: int = 5
     lunch_count: int = 0
@@ -33,7 +38,25 @@ class DiscoveryAnswers(BaseModel):
     lunch_mode: str = "original"
 
     def to_answers_dict(self) -> dict:
-        return self.model_dump()
+        data = self.model_dump()
+        adults = max(0, int(data.get("adults", 2) or 0))
+        children = max(0, int(data.get("children_under_13", 0) or 0))
+        if adults == 2 and children == 0 and int(data.get("household_size", 2) or 2) != 2:
+            # Legacy clients may only send household_size.
+            if "adults" not in self.model_fields_set and "children_under_13" not in self.model_fields_set:
+                adults = max(1, int(data.get("household_size", 2) or 2))
+                children = 0
+        data["adults"] = adults
+        data["children_under_13"] = children
+        data["household_size"] = max(1, adults + children)
+        bands = data.get("children_age_bands") or {}
+        data["children_age_bands"] = {
+            "1-3": int(bands.get("1-3", 0) or 0),
+            "4-6": int(bands.get("4-6", 0) or 0),
+            "7-9": int(bands.get("7-9", 0) or 0),
+            "10-12": int(bands.get("10-12", 0) or 0),
+        }
+        return data
 
 
 class ProfileSaveRequest(BaseModel):

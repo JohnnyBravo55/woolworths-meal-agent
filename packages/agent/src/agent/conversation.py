@@ -16,6 +16,7 @@ from shared.models import (
     SimplicityLevel,
     UserProfile,
 )
+from shared.portions import age_bands_match_children, age_bands_sum
 
 # Used when the user leaves weekly budget blank (optional preference).
 _DEFAULT_SOFT_BUDGET_NZD = 200.0
@@ -49,7 +50,8 @@ class ConversationManager:
     """Manages discovery intake and phase transitions."""
 
     QUESTIONS = [
-        ("household_size", "How many people are you shopping for?", int, {"default": 2}),
+        ("adults", "How many adult portions (people 13+)?", int, {"default": 2}),
+        ("children_under_13", "How many child portions (12 and under)?", int, {"default": 0}),
         ("days", "How many days should this shop cover?", int, {"default": 7}),
         (
             "dinner_count",
@@ -160,8 +162,40 @@ class ConversationManager:
 
         allergies = split_list(str(answers.get("allergies", "")))
 
+        adults_raw = answers.get("adults", None)
+        children_raw = answers.get("children_under_13", None)
+        if adults_raw is None and children_raw is None:
+            adults = int(answers.get("household_size", 2))
+            children_under_13 = 0
+        else:
+            adults = int(adults_raw if adults_raw is not None else 2)
+            children_under_13 = int(children_raw if children_raw is not None else 0)
+        bands_raw = answers.get("children_age_bands") or {}
+        if not isinstance(bands_raw, dict):
+            bands_raw = {}
+        children_age_bands = {
+            "1-3": int(bands_raw.get("1-3", 0) or 0),
+            "4-6": int(bands_raw.get("4-6", 0) or 0),
+            "7-9": int(bands_raw.get("7-9", 0) or 0),
+            "10-12": int(bands_raw.get("10-12", 0) or 0),
+        }
+        if children_under_13 > 0 and age_bands_sum(children_age_bands) == 0:
+            # CLI / sparse answers: default unassigned kids to the mid band.
+            children_age_bands = {
+                "1-3": 0,
+                "4-6": 0,
+                "7-9": children_under_13,
+                "10-12": 0,
+            }
+        elif children_under_13 > 0 and not age_bands_match_children(
+            children_age_bands, children_under_13
+        ):
+            raise ValueError("Assign an age for each child")
+
         profile = UserProfile(
-            household_size=int(answers.get("household_size", 2)),
+            adults=adults,
+            children_under_13=children_under_13,
+            children_age_bands=children_age_bands,
             days=int(answers.get("days", 7)),
             meals_requested=MealsRequested(
                 dinner=int(answers.get("dinner_count", 5)),
