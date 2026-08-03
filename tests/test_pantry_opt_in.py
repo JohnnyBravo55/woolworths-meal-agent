@@ -76,3 +76,37 @@ def test_flatten_excludes_owned_pantry_includes_ticked():
         for i in build_shopping_ingredients([meal], _profile(), pantry_to_buy=["soy sauce"])
     }
     assert "soy sauce" in names_buy
+
+
+def test_apply_pantry_tags_retags_llm_missed_staples():
+    from meal_planner.pantry import apply_pantry_tags, looks_like_pantry_staple
+
+    assert looks_like_pantry_staple("teriyaki sauce")
+    assert looks_like_pantry_staple("soy sauce")
+    assert not looks_like_pantry_staple("chicken thighs")
+    assert not looks_like_pantry_staple("fresh garlic")
+    assert looks_like_pantry_staple("garlic powder")
+    assert not looks_like_pantry_staple("garlic")
+
+    meal = Meal(
+        name="Teriyaki chicken",
+        slot=MealSlot.DINNER,
+        day_label="Monday",
+        description="",
+        ingredients=[
+            Ingredient(name="chicken breast", quantity=500, unit="g", is_pantry=False),
+            Ingredient(name="teriyaki sauce", quantity=1, unit="bottle", is_pantry=False),
+            Ingredient(name="soy sauce", quantity=1, unit="tbsp", is_pantry=False),
+            Ingredient(name="garlic", quantity=2, unit="cloves", is_pantry=True),
+            Ingredient(name="broccoli", quantity=1, unit="head", is_pantry=False),
+        ],
+        steps=[],
+    )
+    apply_pantry_tags([meal])
+    by_name = {i.name: i.is_pantry for i in meal.ingredients}
+    assert by_name["teriyaki sauce"] is True
+    assert by_name["soy sauce"] is True
+    assert by_name["chicken breast"] is False
+    assert by_name["broccoli"] is False
+    assert by_name["garlic"] is False
+    assert collect_required_pantry([meal]) == ["teriyaki sauce", "soy sauce"]

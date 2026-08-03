@@ -14,6 +14,7 @@ class MealPlanLLMError(Exception):
 from meal_planner.chefs import get_chef, is_premium_chef
 from meal_planner.ingredients import build_shopping_ingredients
 from meal_planner.ingredient_normalize import split_compound_ingredients
+from meal_planner.pantry import looks_like_pantry_staple, apply_pantry_tags
 from meal_planner.meal_quality import (
     ensure_meal_balance,
     enforce_culinary_coherence,
@@ -254,7 +255,7 @@ _DAYS = ["Monday", "Tuesday", "Wednesday", "Thursday", "Friday", "Saturday", "Su
 
 _TEMPLATE_BASELINE_SERVINGS = 2.0
 
-# Template staples treated as pantry (LLM path sets is_pantry explicitly).
+# Template staples treated as pantry (LLM path also retagged via apply_pantry_tags).
 _TEMPLATE_PANTRY_STAPLES = frozenset(
     {
         "soy sauce",
@@ -271,6 +272,10 @@ _TEMPLATE_PANTRY_STAPLES = frozenset(
         "chicken stock",
         "vegetable stock",
         "sugar",
+        "teriyaki sauce",
+        "sesame oil",
+        "mixed herbs",
+        "honey",
     }
 )
 
@@ -281,7 +286,7 @@ def _template_ingredient(name: str, quantity: float, unit: str) -> Ingredient:
         name=n,
         quantity=float(quantity),
         unit=unit,
-        is_pantry=n in _TEMPLATE_PANTRY_STAPLES,
+        is_pantry=n in _TEMPLATE_PANTRY_STAPLES or looks_like_pantry_staple(n),
     )
 
 
@@ -422,6 +427,7 @@ def _finalize_meals(meals: list[Meal], profile: UserProfile) -> list[Meal]:
     meals = _replace_kid_unsuitable_meals(meals, profile)
     meals = infer_ingredients_from_titles(meals, profile)
     meals = ensure_meal_balance(meals, profile)
+    meals = apply_pantry_tags(meals)
     meals = scale_dinner_portions_for_leftovers(meals, profile)
     return meals
 

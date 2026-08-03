@@ -2,11 +2,203 @@
 
 from __future__ import annotations
 
+import re
+
 from shared.models import Ingredient, Meal
+
+# Exact / near-exact household staples the recipes checklist should always surface.
+_PANTRY_EXACT = frozenset(
+    {
+        "salt",
+        "pepper",
+        "black pepper",
+        "white pepper",
+        "sugar",
+        "brown sugar",
+        "caster sugar",
+        "honey",
+        "soy sauce",
+        "fish sauce",
+        "oyster sauce",
+        "teriyaki sauce",
+        "sweet chilli",
+        "sweet chilli sauce",
+        "sesame oil",
+        "olive oil",
+        "vegetable oil",
+        "canola oil",
+        "rice vinegar",
+        "balsamic vinegar",
+        "white vinegar",
+        "apple cider vinegar",
+        "cumin",
+        "ground cumin",
+        "paprika",
+        "smoked paprika",
+        "garlic powder",
+        "onion powder",
+        "dried oregano",
+        "dried thyme",
+        "dried basil",
+        "mixed herbs",
+        "italian herbs",
+        "curry powder",
+        "garam masala",
+        "turmeric",
+        "chilli flakes",
+        "chili flakes",
+        "red chilli flakes",
+        "stock",
+        "chicken stock",
+        "vegetable stock",
+        "beef stock",
+        "stock powder",
+        "chicken stock powder",
+        "vegetable stock powder",
+        "miso paste",
+        "green curry paste",
+        "red curry paste",
+        "curry paste",
+        "tomato paste",
+        "mayonnaise",
+        "mayo",
+        "mustard",
+        "dijon mustard",
+        "worcestershire sauce",
+        "hot sauce",
+        "sriracha",
+        "cornflour",
+        "cornstarch",
+        "baking powder",
+        "baking soda",
+        "flour",
+        "plain flour",
+    }
+)
+
+# Phrase hits that usually mean a pantry staple (checked after never-pantry guards).
+_PANTRY_PHRASES = (
+    "soy sauce",
+    "fish sauce",
+    "oyster sauce",
+    "teriyaki sauce",
+    "sweet chilli",
+    "sesame oil",
+    "olive oil",
+    "vegetable oil",
+    "rice vinegar",
+    "balsamic",
+    "garlic powder",
+    "onion powder",
+    "curry powder",
+    "curry paste",
+    "miso paste",
+    "stock powder",
+    "chicken stock",
+    "vegetable stock",
+    "beef stock",
+    "mixed herbs",
+    "dried oregano",
+    "dried thyme",
+    "dried basil",
+    "chilli flakes",
+    "chili flakes",
+    "tomato paste",
+    "worcestershire",
+)
+
+# Fresh / meal-specific items that must never be treated as pantry staples.
+_NEVER_PANTRY = (
+    r"\bchicken\b",
+    r"\bbeef\b",
+    r"\bpork\b",
+    r"\blamb\b",
+    r"\bsalmon\b",
+    r"\bmince\b",
+    r"\btofu\b",
+    r"\bmilk\b",
+    r"\bcream\b",
+    r"\byoghurt\b",
+    r"\byogurt\b",
+    r"\bbutter\b",
+    r"\bcheese\b",
+    r"\bbread\b",
+    r"\bwrap\b",
+    r"\btortilla\b",
+    r"\bpasta\b",
+    r"\brice\b",
+    r"\bnoodle",
+    r"\bpotato",
+    r"\btomato(?!\s+paste)",
+    r"\bcarrot",
+    r"\bbroccoli",
+    r"\bcapsicum",
+    r"\bonion(?!\s+powder)",
+    r"^garlic$",
+    r"\bfresh garlic\b",
+    r"\blettuce",
+    r"\bspinach",
+    r"\bcucumber",
+    r"\bavocado",
+    r"\begg",
+    r"\bcoconut milk\b",
+    r"\bbreadcrumb",
+)
 
 
 def normalize_pantry_item(name: str) -> str:
     return name.strip().lower()
+
+
+def is_never_pantry_ingredient(name: str) -> bool:
+    """True for fresh produce / proteins / dairy that must not be pantry-ticked."""
+    n = normalize_pantry_item(name)
+    if not n:
+        return False
+    # Allowlisted staples win (chicken stock, garlic powder, onion powder, …)
+    if n in _PANTRY_EXACT or any(p in n for p in _PANTRY_PHRASES):
+        return False
+    if n.endswith(" powder") and any(
+        x in n for x in ("garlic", "onion", "chilli", "chili", "curry", "stock")
+    ):
+        return False
+    return any(re.search(pat, n, re.I) for pat in _NEVER_PANTRY)
+
+
+def looks_like_pantry_staple(name: str) -> bool:
+    """True when an ingredient name is a household staple for the recipes checklist."""
+    n = normalize_pantry_item(name)
+    if not n:
+        return False
+    # Allowlist first so "chicken stock" / "garlic powder" win over protein/produce guards.
+    if n in _PANTRY_EXACT:
+        return True
+    if any(p in n for p in _PANTRY_PHRASES):
+        return True
+    if is_never_pantry_ingredient(n):
+        return False
+    # Generic dried spice / seasoning patterns
+    if re.search(
+        r"\b(dried|ground)\b.+\b(herb|spice|cumin|paprika|coriander|thyme|oregano)\b",
+        n,
+    ):
+        return True
+    if n.endswith(" powder") and any(
+        x in n for x in ("garlic", "onion", "chilli", "chili", "curry", "stock")
+    ):
+        return True
+    return False
+
+
+def apply_pantry_tags(meals: list[Meal]) -> list[Meal]:
+    """Tag known staples and clear false pantry flags on fresh/protein items."""
+    for meal in meals:
+        for ing in meal.ingredients or []:
+            if looks_like_pantry_staple(ing.name):
+                ing.is_pantry = True
+            elif is_never_pantry_ingredient(ing.name):
+                ing.is_pantry = False
+    return meals
 
 
 def is_in_pantry(ingredient_name: str, pantry_items: list[str]) -> bool:
