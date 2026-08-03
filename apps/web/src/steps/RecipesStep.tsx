@@ -172,7 +172,7 @@ export function RecipesStep({
                 ? "Searching Woolworths…"
                 : hasCachedList
                   ? "Re-search all products"
-                  : "Find Woolworths products →"}
+                  : "Find products →"}
             </Button>
           </div>
         </CardHeader>

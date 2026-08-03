@@ -600,7 +600,7 @@ export default function App() {
                 ← Back to recipes
               </Button>
               <Button onClick={() => handleResolve(true)} disabled={loading}>
-                {loading ? "Searching…" : "Find Woolworths products"}
+                {loading ? "Searching…" : "Find products"}
               </Button>
             </div>
           </div>
