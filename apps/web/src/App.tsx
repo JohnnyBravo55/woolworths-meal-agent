@@ -56,7 +56,7 @@ function profileToAnswers(data: Record<string, unknown>): DiscoveryAnswers {
     dislikes: String(data.dislikes ?? ""),
     other_instructions: String(data.other_instructions ?? ""),
     budget_nzd: Number(data.budget_nzd ?? 0) || 0,
-    store_name: String(data.store_name ?? ""),
+    store_name: "",
     simplicity: String(data.simplicity ?? "simple"),
     brand_preference: String(data.brand_preference ?? "mixed"),
     chef_id: String(data.chef_id ?? "basic_sam"),

@@ -104,7 +104,7 @@ export function DiscoveryStep({
   const [ageError, setAgeError] = useState("");
 
   const set = (patch: Partial<DiscoveryAnswers>) => {
-    const next = { ...answers, ...patch };
+    const next = { ...answers, ...patch, store_name: "" };
     const adults = Math.max(0, next.adults ?? 0);
     const children = Math.max(0, next.children_under_13 ?? 0);
     next.adults = adults;
@@ -330,7 +330,7 @@ export function DiscoveryStep({
 
         <Card>
           <CardHeader>
-            <h2 className="text-lg font-semibold">Budget &amp; store</h2>
+            <h2 className="text-lg font-semibold">Budget</h2>
           </CardHeader>
           <CardBody className="grid gap-4 sm:grid-cols-2">
             <Field label="Weekly budget NZD (optional)">
@@ -342,14 +342,6 @@ export function DiscoveryStep({
                   set({ budget_nzd: e.target.value.trim() ? Number(e.target.value) || 0 : 0 })
                 }
                 placeholder="Leave blank for no hard budget"
-              />
-            </Field>
-            <Field label="Store (suburb)">
-              <input
-                className="w-full rounded-lg border border-slate-300 px-3 py-2 placeholder:text-slate-400"
-                value={answers.store_name}
-                onChange={(e) => set({ store_name: e.target.value })}
-                placeholder="Ferrymead"
               />
             </Field>
             <Field label="Brand preference">

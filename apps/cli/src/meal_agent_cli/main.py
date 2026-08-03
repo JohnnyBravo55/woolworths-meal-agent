@@ -274,8 +274,7 @@ async def run_from_profile(
     console.print(
         Panel(
             f"Loaded profile: [bold]{Path(profile_path).name}[/bold]\n"
-            f"{profile.household_size} people · ${profile.budget_nzd} budget · "
-            f"{profile.store_name or 'any store'}\n"
+            f"{profile.household_size} people · ${profile.budget_nzd} budget\n"
             f"Allergies: {', '.join(profile.allergies) or 'none'}",
             title="Saved profile",
         )
