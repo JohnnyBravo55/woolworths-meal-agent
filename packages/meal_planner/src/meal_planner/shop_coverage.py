@@ -16,7 +16,7 @@ from meal_planner.meal_quality import (
     is_leftover_meal,
     leftover_meal_needs_shop,
 )
-from meal_planner.pantry import is_in_pantry
+from meal_planner.pantry import is_owned_pantry
 
 # Meal title keywords → shoppable ingredient when missing from the recipe list
 _TITLE_PROTEIN: list[tuple[tuple[str, ...], tuple[str, float, str]]] = [
@@ -50,28 +50,36 @@ def _meal_title_text(meal: Meal) -> str:
     return f"{meal.name} {meal.description}".lower()
 
 
-def _required_shop_ingredients(meal: Meal, profile: UserProfile) -> list[str]:
-    """Non-pantry ingredients this meal should contribute to the shop list."""
+def _required_shop_ingredients(
+    meal: Meal,
+    profile: UserProfile,
+    pantry_to_buy: list[str] | None = None,
+) -> list[str]:
+    """Non-owned-pantry ingredients this meal should contribute to the shop list."""
+    buy = list(pantry_to_buy or [])
     if is_leftover_meal(meal):
         return [
             normalize_ingredient_name(ing.name)
             for ing in meal.ingredients
-            if leftover_meal_needs_shop(ing.name)
-            and not is_in_pantry(ing.name, profile.pantry_items)
+            if leftover_meal_needs_shop(ing.name) and not is_owned_pantry(ing, buy)
         ]
 
     return [
         normalize_ingredient_name(ing.name)
         for ing in meal.ingredients
-        if not is_in_pantry(ing.name, profile.pantry_items)
+        if not is_owned_pantry(ing, buy)
     ]
 
 
-def _meal_needs_shop_items(meal: Meal, profile: UserProfile) -> bool:
+def _meal_needs_shop_items(
+    meal: Meal,
+    profile: UserProfile,
+    pantry_to_buy: list[str] | None = None,
+) -> bool:
     if meal.slot == MealSlot.SNACK:
-        return bool(_required_shop_ingredients(meal, profile))
+        return bool(_required_shop_ingredients(meal, profile, pantry_to_buy))
     if is_leftover_meal(meal):
-        return bool(_required_shop_ingredients(meal, profile))
+        return bool(_required_shop_ingredients(meal, profile, pantry_to_buy))
     return meal.slot in (MealSlot.DINNER, MealSlot.LUNCH, MealSlot.BREAKFAST)
 
 
@@ -125,16 +133,18 @@ def audit_shop_coverage(
     meals: list[Meal],
     items: list[Ingredient],
     profile: UserProfile,
+    pantry_to_buy: list[str] | None = None,
 ) -> list[ShopCoverageIssue]:
     """Find meals with no shop lines or missing required ingredients."""
     issues: list[ShopCoverageIssue] = []
     on_list = {normalize_ingredient_name(i.name) for i in items}
+    buy = list(pantry_to_buy or [])
 
     for meal in meals:
-        if not _meal_needs_shop_items(meal, profile):
+        if not _meal_needs_shop_items(meal, profile, buy):
             continue
 
-        required = _required_shop_ingredients(meal, profile)
+        required = _required_shop_ingredients(meal, profile, buy)
         linked = [
             i
             for i in items
@@ -197,8 +207,10 @@ def _link_leftover_reuse(
     meals: list[Meal],
     by_name: dict[str, object],
     profile: UserProfile,
+    pantry_to_buy: list[str] | None = None,
 ) -> None:
     """Attach leftover lunches to existing shop lines they reuse (no extra buy)."""
+    buy = list(pantry_to_buy or [])
     for meal in meals:
         if not is_leftover_meal(meal):
             continue
@@ -206,7 +218,7 @@ def _link_leftover_reuse(
             norm = normalize_ingredient_name(ing.name)
             if norm.startswith(("leftover ", "left over ", "left-over ", "steamed ")):
                 continue
-            if is_in_pantry(ing.name, profile.pantry_items):
+            if is_owned_pantry(ing, buy):
                 continue
             existing = by_name.get(norm)
             if existing is None:
@@ -220,8 +232,10 @@ def link_meals_to_shop_items(
     meals: list[Meal],
     items: list[Ingredient],
     profile: UserProfile,
+    pantry_to_buy: list[str] | None = None,
 ) -> list[Ingredient]:
     """Ensure shared ingredients list every meal that needs them."""
+    buy = list(pantry_to_buy or [])
     by_name: dict[str, Ingredient] = {}
     for item in items:
         key = normalize_ingredient_name(item.name)
@@ -234,11 +248,11 @@ def link_meals_to_shop_items(
                 existing.for_meals.append(meal_name)
 
     for meal in meals:
-        for norm in _required_shop_ingredients(meal, profile):
+        for norm in _required_shop_ingredients(meal, profile, buy):
             if norm in by_name and meal.name not in by_name[norm].for_meals:
                 by_name[norm].for_meals.append(meal.name)
 
-    _link_leftover_reuse(meals, by_name, profile)
+    _link_leftover_reuse(meals, by_name, profile, buy)
     return list(by_name.values())
 
 
@@ -246,18 +260,20 @@ def repair_shop_coverage(
     meals: list[Meal],
     items: list[Ingredient],
     profile: UserProfile,
+    pantry_to_buy: list[str] | None = None,
 ) -> list[Ingredient]:
     """Add missing shop lines and meal links until coverage audit passes."""
     from meal_planner.ingredients import deduplicate_ingredients
 
+    buy = list(pantry_to_buy or [])
     on_list = {normalize_ingredient_name(i.name) for i in items}
     extras: list[Ingredient] = []
 
     for meal in meals:
-        if not _meal_needs_shop_items(meal, profile):
+        if not _meal_needs_shop_items(meal, profile, buy):
             continue
 
-        for norm in _required_shop_ingredients(meal, profile):
+        for norm in _required_shop_ingredients(meal, profile, buy):
             if norm in on_list:
                 continue
             source = next(
@@ -297,7 +313,7 @@ def repair_shop_coverage(
                     break
 
     merged = deduplicate_ingredients(items + extras)
-    return link_meals_to_shop_items(meals, merged, profile)
+    return link_meals_to_shop_items(meals, merged, profile, pantry_to_buy=buy)
 
 
 def format_coverage_issue(issue: ShopCoverageIssue) -> str:
@@ -312,15 +328,17 @@ def audit_resolved_shop_coverage(
     meals: list[Meal],
     items: list,
     profile: UserProfile,
+    pantry_to_buy: list[str] | None = None,
 ) -> list[str]:
     """Check resolved grocery lines still cover every meal."""
     messages: list[str] = []
+    buy = list(pantry_to_buy or [])
     on_list = {
         normalize_ingredient_name(getattr(item, "ingredient", getattr(item, "name", "")))
         for item in items
     }
     for meal in meals:
-        if not _meal_needs_shop_items(meal, profile):
+        if not _meal_needs_shop_items(meal, profile, buy):
             continue
         linked = [
             item
@@ -333,7 +351,7 @@ def audit_resolved_shop_coverage(
             continue
         missing = [
             name
-            for name in _required_shop_ingredients(meal, profile)
+            for name in _required_shop_ingredients(meal, profile, buy)
             if name not in on_list
         ]
         if missing:
@@ -357,6 +375,7 @@ def heal_resolved_coverage(
     meals: list[Meal],
     items: list,
     profile: UserProfile,
+    pantry_to_buy: list[str] | None = None,
 ) -> tuple[list, list[str]]:
     """Fill holes after product resolve: link meals and add Manual OFFLINE rows.
 
@@ -365,6 +384,7 @@ def heal_resolved_coverage(
     from shared.models import GroceryLineItem
     from woolworths_adapter.estimates import estimate_price
 
+    buy = list(pantry_to_buy or [])
     by_name: dict[str, object] = {}
     for item in items:
         raw = getattr(item, "ingredient", getattr(item, "name", ""))
@@ -384,9 +404,9 @@ def heal_resolved_coverage(
             by_name[key] = by_name[primary]
 
     for meal in meals:
-        if not _meal_needs_shop_items(meal, profile):
+        if not _meal_needs_shop_items(meal, profile, buy):
             continue
-        for req in _required_shop_ingredients(meal, profile):
+        for req in _required_shop_ingredients(meal, profile, buy):
             if req in by_name:
                 existing = by_name[req]
                 if meal.name not in existing.for_meals:
@@ -409,7 +429,7 @@ def heal_resolved_coverage(
                 warnings=["No Woolworths product match — add manually"],
             )
 
-    _link_leftover_reuse(meals, by_name, profile)
+    _link_leftover_reuse(meals, by_name, profile, buy)
     # by_name may alias multiple keys to the same line object
     healed = list({id(v): v for v in by_name.values()}.values())
     issues = audit_resolved_shop_coverage(meals, healed, profile)

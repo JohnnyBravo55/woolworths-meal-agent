@@ -160,7 +160,12 @@ def test_pantry_only_dinner_still_gets_shop_items():
         slot=MealSlot.DINNER,
         day_label="Thursday",
         description="Grilled chicken with roasted vegetables.",
-        ingredients=[_ing("olive oil"), _ing("salt"), _ing("pepper"), _ing("garlic")],
+        ingredients=[
+            Ingredient(name="olive oil", quantity=1, unit="each", is_pantry=True),
+            Ingredient(name="salt", quantity=1, unit="each", is_pantry=True),
+            Ingredient(name="pepper", quantity=1, unit="each", is_pantry=True),
+            Ingredient(name="garlic", quantity=1, unit="each", is_pantry=True),
+        ],
         steps=[],
     )
     infer_ingredients_from_titles([meal], profile)

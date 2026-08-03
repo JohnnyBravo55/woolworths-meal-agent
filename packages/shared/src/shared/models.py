@@ -167,6 +167,7 @@ class Ingredient(BaseModel):
     notes: str = ""
     for_meals: list[str] = Field(default_factory=list)
     is_mandatory: bool = False
+    is_pantry: bool = False
 
     @field_validator("name", mode="before")
     @classmethod
@@ -264,6 +265,7 @@ class ConversationState(BaseModel):
     profile: UserProfile | None = None
     meal_plan: MealPlan | None = None
     resolved_list: ResolvedGroceryList | None = None
+    pantry_to_buy: list[str] = Field(default_factory=list)
     plan_approved: bool = False
     products_approved: bool = False
     cart_attempted: bool = False

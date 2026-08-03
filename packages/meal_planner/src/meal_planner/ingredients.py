@@ -7,7 +7,7 @@ from shared.models import Ingredient, UserProfile
 
 from meal_planner.ingredient_normalize import normalize_ingredient_name
 from meal_planner.meal_quality import is_leftover_meal, leftover_meal_needs_shop
-from meal_planner.pantry import exclude_pantry_ingredients, is_in_pantry
+from meal_planner.pantry import is_owned_pantry
 from meal_planner.shop_coverage import link_meals_to_shop_items, repair_shop_coverage
 
 # When the same protein appears on multiple dinners, buy the largest line — not a sum
@@ -34,17 +34,22 @@ def filter_allergens(ingredients: list[Ingredient], profile: UserProfile) -> lis
     return [i for i in ingredients if not ingredient_conflicts_allergies(i.name, profile)]
 
 
-def build_shopping_ingredients(meals: list, profile: UserProfile) -> list[Ingredient]:
+def build_shopping_ingredients(
+    meals: list,
+    profile: UserProfile,
+    pantry_to_buy: list[str] | None = None,
+) -> list[Ingredient]:
     """Flatten meal ingredients, apply mandatory items, allergy and pantry filters."""
     from shared.models import Meal
 
+    buy = list(pantry_to_buy or [])
     mandatory = normalize_mandatory_for_allergies(profile.mandatory_items, profile)
     items = collect_plan_ingredients(meals, mandatory)
     items = filter_allergens(items, profile)
-    items = exclude_pantry_ingredients(items, profile.pantry_items)
-    items = _ensure_meal_ingredients_present(meals, items, profile)
-    items = link_meals_to_shop_items(meals, items, profile)
-    items = repair_shop_coverage(meals, items, profile)
+    items = [i for i in items if not is_owned_pantry(i, buy) or i.is_mandatory]
+    items = _ensure_meal_ingredients_present(meals, items, profile, buy)
+    items = link_meals_to_shop_items(meals, items, profile, pantry_to_buy=buy)
+    items = repair_shop_coverage(meals, items, profile, pantry_to_buy=buy)
     return _prune_orphan_ingredients(items, meals, mandatory)
 
 
@@ -73,10 +78,12 @@ def _ensure_meal_ingredients_present(
     meals: list,
     items: list[Ingredient],
     profile: UserProfile,
+    pantry_to_buy: list[str] | None = None,
 ) -> list[Ingredient]:
-    """Every ingredient listed on a meal must appear on the shop list."""
+    """Every non-owned-pantry ingredient listed on a meal must appear on the shop list."""
     from shared.models import Ingredient, Meal
 
+    buy = list(pantry_to_buy or [])
     on_list = {normalize_ingredient_name(i.name) for i in items}
     extras: list[Ingredient] = []
     for meal in meals:
@@ -87,7 +94,7 @@ def _ensure_meal_ingredients_present(
                 norm = normalize_ingredient_name(ing.name)
                 if not leftover_meal_needs_shop(norm):
                     continue
-                if is_in_pantry(norm, profile.pantry_items):
+                if is_owned_pantry(ing, buy):
                     continue
                 if norm not in on_list:
                     copy = ing.model_copy(deep=True)
@@ -99,7 +106,7 @@ def _ensure_meal_ingredients_present(
             continue
         for ing in meal.ingredients:
             norm = normalize_ingredient_name(ing.name)
-            if is_in_pantry(norm, profile.pantry_items):
+            if is_owned_pantry(ing, buy):
                 continue
             if norm not in on_list:
                 copy = ing.model_copy(deep=True)
@@ -134,6 +141,8 @@ def deduplicate_ingredients(ingredients: list[Ingredient]) -> list[Ingredient]:
                 existing.for_meals.append(meal)
         if ingredient.notes and ingredient.notes not in existing.notes:
             existing.notes = f"{existing.notes}; {ingredient.notes}".strip("; ")
+        if ingredient.is_pantry:
+            existing.is_pantry = True
 
     return list(merged.values())
 

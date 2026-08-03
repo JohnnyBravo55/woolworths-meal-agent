@@ -108,7 +108,7 @@ def test_heal_does_not_add_pantry_items():
         description="",
         ingredients=[
             Ingredient(name="chicken breast", quantity=400, unit="g"),
-            Ingredient(name="soy sauce", quantity=1, unit="bottle"),
+            Ingredient(name="soy sauce", quantity=1, unit="bottle", is_pantry=True),
         ],
         steps=[],
     )
