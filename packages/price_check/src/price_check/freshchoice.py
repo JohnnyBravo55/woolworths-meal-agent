@@ -12,8 +12,9 @@ from urllib.parse import quote_plus
 import httpx
 
 from price_check.links import enrich_line, with_store_url
-from price_check.matching import pick_best_product, search_query_variants
+from price_check.matching import pick_best_product, score_product_name, search_query_variants
 from price_check.models import PriceCheckLine, PriceSource, StoreChain, StoreRef
+from price_check.pricing import pick_best_priced_product, price_purchase
 
 _UA = (
     "Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 "
@@ -219,7 +220,14 @@ async def search_products(store: StoreRef, query: str, *, limit: int = 12) -> li
     return products[:limit]
 
 
-async def match_line(store: StoreRef, ingredient: str, quantity: float, unit: str) -> PriceCheckLine | None:
+async def match_line(
+    store: StoreRef,
+    ingredient: str,
+    quantity: float,
+    unit: str,
+    *,
+    household_size: int = 2,
+) -> PriceCheckLine | None:
     if store.chain != StoreChain.FRESHCHOICE:
         return None
     products: list[dict[str, Any]] = []
@@ -231,27 +239,46 @@ async def match_line(store: StoreRef, ingredient: str, quantity: float, unit: st
             if key in seen:
                 continue
             seen.add(key)
-            products.append(item)
+            size = str(item.get("size") or "")
+            sale_type = "WEIGHT" if size.strip().lower() in {"kg", "kilogram"} else "UNITS"
+            products.append({**item, "display": size, "saleType": sale_type})
         if pick_best_product(ingredient, products):
             break
-    best = pick_best_product(ingredient, products)
+    best = pick_best_priced_product(
+        ingredient,
+        products,
+        quantity=quantity,
+        unit=unit,
+        score_fn=score_product_name,
+        household_size=household_size,
+    )
     if not best:
         return None
     unit_price = float(best.get("unit_price") or 0)
     if unit_price <= 0:
         return None
-    qty = float(quantity or 1) or 1.0
+    buy_qty, buy_unit, line_total = price_purchase(
+        ingredient=ingredient,
+        quantity=quantity,
+        unit=unit,
+        unit_price=unit_price,
+        sale_type=str(best.get("saleType") or ""),
+        sku=str(best.get("sku") or ""),
+        display=str(best.get("display") or best.get("size") or ""),
+        product_name=str(best.get("name") or ""),
+        household_size=household_size,
+    )
     name = " ".join(
         x for x in [best.get("name"), best.get("size")] if x
     ).strip()
     line = PriceCheckLine(
         ingredient=ingredient,
-        quantity=qty,
-        unit=unit or "each",
+        quantity=buy_qty,
+        unit=buy_unit,
         product_name=name,
         sku=str(best.get("sku") or ""),
         unit_price=round(unit_price, 2),
-        line_total=round(unit_price * qty, 2),
+        line_total=line_total,
         price_source=PriceSource.LIVE,
         note="",
     )

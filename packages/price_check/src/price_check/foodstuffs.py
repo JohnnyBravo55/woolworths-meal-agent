@@ -203,7 +203,14 @@ def _effective_cents(product: dict) -> int | None:
     return min(shelf_i, promo_cents)
 
 
-async def match_line(store: StoreRef, ingredient: str, quantity: float, unit: str) -> PriceCheckLine | None:
+async def match_line(
+    store: StoreRef,
+    ingredient: str,
+    quantity: float,
+    unit: str,
+    *,
+    household_size: int = 2,
+) -> PriceCheckLine | None:
     if store.chain not in _CHAIN_CONFIG:
         return None
     store_uuid = store.id.split(":", 1)[-1]
@@ -237,6 +244,7 @@ async def match_line(store: StoreRef, ingredient: str, quantity: float, unit: st
         quantity=quantity,
         unit=unit,
         score_fn=score_product_name,
+        household_size=household_size,
     )
     if not best:
         return None
@@ -252,6 +260,7 @@ async def match_line(store: StoreRef, ingredient: str, quantity: float, unit: st
         sku=str(best.get("sku") or ""),
         display=str(best.get("display") or ""),
         product_name=str(best.get("name") or ""),
+        household_size=household_size,
     )
     product_name = " ".join(
         x for x in [best.get("brand"), best.get("name"), best.get("display")] if x

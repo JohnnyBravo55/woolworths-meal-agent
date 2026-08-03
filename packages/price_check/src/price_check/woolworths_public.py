@@ -288,7 +288,14 @@ async def search_products(query: str, *, limit: int = 8) -> list[dict[str, Any]]
     return out
 
 
-async def match_line(store: StoreRef, ingredient: str, quantity: float, unit: str) -> PriceCheckLine | None:
+async def match_line(
+    store: StoreRef,
+    ingredient: str,
+    quantity: float,
+    unit: str,
+    *,
+    household_size: int = 2,
+) -> PriceCheckLine | None:
     if store.chain != StoreChain.WOOLWORTHS:
         return None
     products: list[dict[str, Any]] = []
@@ -313,6 +320,7 @@ async def match_line(store: StoreRef, ingredient: str, quantity: float, unit: st
         quantity=quantity,
         unit=unit,
         score_fn=score_product_name,
+        household_size=household_size,
     )
     if not best:
         return None
@@ -328,6 +336,7 @@ async def match_line(store: StoreRef, ingredient: str, quantity: float, unit: st
         sku=str(best.get("sku") or ""),
         display=str(best.get("display") or best.get("size") or ""),
         product_name=str(best.get("name") or ""),
+        household_size=household_size,
     )
     name = " ".join(x for x in [best.get("brand"), best.get("name"), best.get("size")] if x).strip()
     line = PriceCheckLine(

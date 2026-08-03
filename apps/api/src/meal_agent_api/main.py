@@ -1235,6 +1235,9 @@ async def price_check(
         raise HTTPException(status_code=400, detail="Resolve a shop list first")
     session.price_check_store_ids = list(body.store_ids)
     items = list(resolved.items)
+    household_size = 2
+    if session.state.profile is not None:
+        household_size = max(1, int(session.state.profile.household_size or 2))
 
     async def stream():
         try:
@@ -1243,6 +1246,7 @@ async def price_check(
             async for resolved_stores, missing, basket, idx in iter_price_check_baskets(
                 store_ids=list(body.store_ids),
                 items=items,
+                household_size=household_size,
             ):
                 stores = resolved_stores
                 if basket is None:

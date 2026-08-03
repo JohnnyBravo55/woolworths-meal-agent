@@ -23,20 +23,29 @@ from price_check.models import (
 )
 
 
+def make_match_fn(household_size: int = 2):
+    async def match_store_item(store: StoreRef, item: GroceryLineItem) -> PriceCheckLine | None:
+        qty = float(item.quantity or 1)
+        unit = item.unit or "each"
+        if store.chain == StoreChain.WOOLWORTHS:
+            return await woolworths_public.match_line(
+                store, item.ingredient, qty, unit, household_size=household_size
+            )
+        if store.chain in (StoreChain.NEW_WORLD, StoreChain.PAKNSAVE):
+            return await foodstuffs.match_line(
+                store, item.ingredient, qty, unit, household_size=household_size
+            )
+        if store.chain == StoreChain.FRESHCHOICE:
+            return await freshchoice.match_line(
+                store, item.ingredient, qty, unit, household_size=household_size
+            )
+        return None
+
+    return match_store_item
+
+
 async def match_store_item(store: StoreRef, item: GroceryLineItem) -> PriceCheckLine | None:
-    if store.chain == StoreChain.WOOLWORTHS:
-        return await woolworths_public.match_line(
-            store, item.ingredient, float(item.quantity or 1), item.unit or "each"
-        )
-    if store.chain in (StoreChain.NEW_WORLD, StoreChain.PAKNSAVE):
-        return await foodstuffs.match_line(
-            store, item.ingredient, float(item.quantity or 1), item.unit or "each"
-        )
-    if store.chain == StoreChain.FRESHCHOICE:
-        return await freshchoice.match_line(
-            store, item.ingredient, float(item.quantity or 1), item.unit or "each"
-        )
-    return None
+    return await make_match_fn(2)(store, item)
 
 
 async def resolve_stores(store_ids: list[str]) -> tuple[list[StoreRef], list[str]]:
@@ -61,6 +70,7 @@ async def price_check_for_items(
     store_ids: list[str],
     items: list[GroceryLineItem],
     include_split: bool = False,
+    household_size: int = 2,
 ) -> PriceCheckResult:
     stores, missing = await resolve_stores(store_ids)
     if missing and not stores:
@@ -68,7 +78,7 @@ async def price_check_for_items(
     return await run_price_check(
         stores=stores,
         items=items,
-        match_fn=match_store_item,
+        match_fn=make_match_fn(household_size),
         include_split=include_split,
     )
 
@@ -77,6 +87,7 @@ async def iter_price_check_baskets(
     *,
     store_ids: list[str],
     items: list[GroceryLineItem],
+    household_size: int = 2,
 ) -> AsyncIterator[tuple[list[StoreRef], list[str], PriceCheckStoreBasket | None, int]]:
     """Yield ``(stores, missing, basket|None, index)``.
 
@@ -85,9 +96,10 @@ async def iter_price_check_baskets(
     stores, missing = await resolve_stores(store_ids)
     if missing and not stores:
         raise ValueError(f"Unknown store id(s): {', '.join(missing)}")
+    match_fn = make_match_fn(household_size)
     yield stores, missing, None, -1
     for idx, store in enumerate(stores):
-        basket = await basket_for_store(store, items, match_store_item)
+        basket = await basket_for_store(store, items, match_fn)
         yield stores, missing, basket, idx
 
 

@@ -70,7 +70,7 @@ _TEMPLATE_DINNERS = [
         "name": "Salmon with Roasted Vegetables",
         "description": "Sheet-pan dinner with minimal cleanup.",
         "ingredients": [
-            ("salmon fillets", 4, "each"),
+            ("salmon fillets", 2, "each"),
             ("potatoes", 1, "kg"),
             ("broccoli", 1, "head"),
             ("olive oil", 1, "bottle"),

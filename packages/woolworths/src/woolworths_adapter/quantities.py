@@ -134,16 +134,22 @@ def normalize_cart_quantity(
     grams = _grams_from_ingredient(ingredient)
     product_unit = product.unit if product.unit in ("Each", "Kilogram") else "Each"
 
+    unit = _normalize_unit(ingredient.unit)
+    qty = ingredient.quantity
+    name_lower = ingredient.name.lower()
+    people = max(1, int(household_size or 2))
+
     if grams is not None:
         kg = grams / 1000.0
         if product_unit == "Kilogram":
             capped = min(max(0.15, round(kg, 2)), MAX_KG_QUANTITY)
-            return capped, "Kilogram"
+            # ~150–200g protein per person; salmon is expensive — stay lean
+            if "salmon" in name_lower:
+                capped = min(capped, round(0.18 * people, 2))
+            elif any(p in name_lower for p in ("chicken", "beef", "lamb", "pork", "fish")):
+                capped = min(capped, round(0.25 * people, 2))
+            return max(0.15, capped), "Kilogram"
         return 1.0, "Each"
-
-    unit = _normalize_unit(ingredient.unit)
-    qty = ingredient.quantity
-    name_lower = ingredient.name.lower()
 
     if any(p in name_lower for p in _PANTRY_SINGLE_PACK):
         return 1.0, "Each"
@@ -152,11 +158,14 @@ def normalize_cart_quantity(
         base = max(1, int(round(qty)))
         is_protein = any(p in name_lower for p in _PROTEIN_TERMS)
         if is_protein:
-            # Recipe may already include leftover scaling — honour count, cap sanely
-            household_cap = min(MAX_EACH_QUANTITY, max(household_size * 2, int(round(qty))))
+            # One salmon/fish fillet per person; other proteins up to ~2 pieces each
+            if "salmon" in name_lower or "fillet" in name_lower:
+                household_cap = people
+            else:
+                household_cap = min(MAX_EACH_QUANTITY, people * 2)
             return float(min(base, household_cap)), "Each"
         scaled = min(base, MAX_EACH_QUANTITY)
-        household_cap = max(2, household_size + 1)
+        household_cap = max(2, people + 1)
         return float(min(scaled, household_cap)), "Each"
 
     # Unknown unit — safest default is one pack

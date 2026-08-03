@@ -42,11 +42,18 @@ def test_kg_product_gets_kg_quantity():
     assert qty == 0.8
 
 
-def test_fillets_capped():
+def test_fillets_capped_to_one_per_person():
     ing = Ingredient(name="salmon fillets", quantity=4, unit="each")
     qty, unit = normalize_cart_quantity(ing, _product("Each"), household_size=2)
-    assert qty == 4.0
+    assert qty == 2.0
     assert unit == "Each"
+
+
+def test_salmon_kg_capped_for_two_people():
+    ing = Ingredient(name="salmon fillets", quantity=1000, unit="g")
+    qty, unit = normalize_cart_quantity(ing, _product("Kilogram"), household_size=2)
+    assert unit == "Kilogram"
+    assert qty <= 0.36
 
 
 def test_deduped_weight_sums_safely():

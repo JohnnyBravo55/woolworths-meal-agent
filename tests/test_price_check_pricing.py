@@ -13,10 +13,11 @@ def test_fillets_each_not_multiplied_as_kg():
         sale_type="WEIGHT",
         sku="5134102-KGM-000",
         display="kg",
+        household_size=2,
     )
     assert unit == "kg"
-    assert qty <= 1.0
-    assert total < 60  # was wrongly ~$220
+    assert qty <= 0.4  # ~2 fillets for 2 people
+    assert total < 25  # was wrongly ~$220
 
 
 def test_chicken_thighs_four_each_against_per_kg():
@@ -28,13 +29,14 @@ def test_chicken_thighs_four_each_against_per_kg():
         sale_type="WEIGHT",
         sku="5268350-KGM-000",
         display="kg",
+        household_size=2,
     )
     assert unit == "kg"
-    assert total < 40  # was wrongly ~$105
+    assert total < 20  # was wrongly ~$105
 
 
-def test_two_kg_salmon_capped():
-    assert needed_kg("salmon fillets", 2, "kg") <= 1.0
+def test_two_kg_salmon_capped_for_two_people():
+    assert needed_kg("salmon fillets", 2, "kg", household_size=2) <= 0.4
 
 
 def test_prefers_family_pack_math():

@@ -16,10 +16,12 @@ _PROTEIN_EACH_KG: dict[str, float] = {
     "tofu": 0.25,
 }
 
-# Hard caps so one line cannot imply a catering order.
-_MAX_PROTEIN_KG = 1.5
-_MAX_SALMON_KG = 1.0
-_MAX_PACKS = 3
+# Hard caps so one line cannot imply a catering order (per 2 people baseline).
+_MAX_PROTEIN_KG = 1.0
+_MAX_SALMON_KG = 0.4  # ~2 fillets for 2 people
+_KG_PER_PERSON_SALMON = 0.18
+_KG_PER_PERSON_PROTEIN = 0.25
+_MAX_PACKS = 2
 
 
 def _norm_unit(unit: str) -> str:
@@ -49,11 +51,18 @@ def is_weight_priced(sale_type: str | None, sku: str = "", display: str = "") ->
     return (display or "").strip().lower() in {"kg", "kilogram", "kilograms"}
 
 
-def needed_kg(ingredient: str, quantity: float, unit: str) -> float:
+def needed_kg(
+    ingredient: str,
+    quantity: float,
+    unit: str,
+    *,
+    household_size: int = 2,
+) -> float:
     """Estimate kilograms needed for a shop-list protein/produce line."""
     qty = float(quantity or 1) or 1.0
     u = _norm_unit(unit)
     name = ingredient.lower()
+    people = max(1, int(household_size or 2))
 
     if u in {"kg", "kilogram", "kilograms", "kilo"}:
         kg = qty
@@ -69,13 +78,20 @@ def needed_kg(ingredient: str, quantity: float, unit: str) -> float:
             if key in name:
                 each_kg = val
                 break
+        # Never invent more pieces than 1 fillet / ~2 thigh pieces per person
+        if "salmon" in name or "fillet" in name:
+            qty = min(qty, float(people))
+        elif any(p in name for p in ("chicken", "beef", "lamb", "pork")):
+            qty = min(qty, float(people * 2))
         kg = max(1.0, qty) * each_kg
 
-    cap = _MAX_SALMON_KG if "salmon" in name else _MAX_PROTEIN_KG
-    if any(p in name for p in _PROTEIN_EACH_KG):
-        kg = min(kg, cap)
+    if "salmon" in name:
+        cap = min(_MAX_SALMON_KG, round(_KG_PER_PERSON_SALMON * people, 2))
+    elif any(p in name for p in _PROTEIN_EACH_KG):
+        cap = min(_MAX_PROTEIN_KG, round(_KG_PER_PERSON_PROTEIN * people, 2))
     else:
-        kg = min(kg, 5.0)
+        cap = 5.0
+    kg = min(kg, cap)
     return max(0.15, round(kg, 2))
 
 
@@ -89,6 +105,7 @@ def price_purchase(
     sku: str = "",
     display: str = "",
     product_name: str = "",
+    household_size: int = 2,
 ) -> tuple[float, str, float]:
     """
     Return (buy_qty, buy_unit, line_total) for a matched catalogue product.
@@ -100,12 +117,12 @@ def price_purchase(
 
     weight_priced = is_weight_priced(sale_type, sku=sku, display=display)
     if weight_priced:
-        kg = needed_kg(ingredient, quantity, unit)
+        kg = needed_kg(ingredient, quantity, unit, household_size=household_size)
         return kg, "kg", round(unit_price * kg, 2)
 
     pack_kg = parse_pack_kg(display, product_name)
     if pack_kg and any(p in ingredient.lower() for p in _PROTEIN_EACH_KG):
-        need = needed_kg(ingredient, quantity, unit)
+        need = needed_kg(ingredient, quantity, unit, household_size=household_size)
         packs = int(max(1, -(-int(need * 1000) // int(pack_kg * 1000))))  # ceil
         packs = min(packs, _MAX_PACKS)
         return float(packs), "each", round(unit_price * packs, 2)
@@ -129,6 +146,7 @@ def pick_best_priced_product(
     quantity: float,
     unit: str,
     score_fn,
+    household_size: int = 2,
 ) -> dict[str, Any] | None:
     """Prefer matches that cover the need at the lowest estimated line total."""
     scored: list[tuple[float, float, dict[str, Any]]] = []
@@ -155,6 +173,7 @@ def pick_best_priced_product(
             sku=str(cand.get("sku") or ""),
             display=str(cand.get("display") or cand.get("size") or ""),
             product_name=name,
+            household_size=household_size,
         )
         # Prefer packs slightly when totals are close — more realistic shop
         pack_bonus = 0.0
