@@ -417,15 +417,6 @@ def run_smoke(
                     placeholder="milk, bread",
                     label="Mandatory items",
                 )
-            pantry = prefs.get("pantry_items") or ""
-            if pantry:
-                _fill_by_testid_or_placeholder(
-                    page,
-                    "discovery-pantry",
-                    pantry,
-                    placeholder="olive oil, rice, soy sauce",
-                    label="Already in pantry",
-                )
 
             print("Continue to chef…")
             _click_by_testid_or_text(page, "discovery-continue", "Continue to chef →")
