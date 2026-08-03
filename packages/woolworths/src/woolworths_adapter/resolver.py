@@ -24,7 +24,13 @@ from meal_planner.shop_coverage import (
     format_coverage_issue,
     heal_resolved_coverage,
 )
-from woolworths_adapter.client import WoolworthsAdapter, WoolworthsError
+from woolworths_adapter.client import (
+    CatalogueUnavailableError,
+    WoolworthsAdapter,
+    WoolworthsError,
+    is_catalogue_circuit_open,
+    trip_catalogue_circuit,
+)
 from woolworths_adapter.quantities import (
     normalize_cart_quantity,
     produce_piece_grams,
@@ -229,11 +235,21 @@ class ProductResolver:
         *,
         expanded: bool = False,
     ) -> list[ProductMatch]:
-        """Try multiple search queries and merge plausible results."""
+        """Try multiple search queries and merge plausible results.
+
+        Hard catalogue errors trip a process-wide circuit so shop-resolve cannot
+        fan out dozens of timed-out queries per ingredient (UI freeze).
+        """
         from meal_planner.ingredient_normalize import fruit_fallback_queries, is_fruit_ingredient
+
+        if is_catalogue_circuit_open():
+            raise CatalogueUnavailableError(
+                "Woolworths catalogue blocked from this host (using estimates)"
+            )
 
         all_matches: list[ProductMatch] = []
         seen_skus: set[str] = set()
+        consecutive_errors = 0
 
         query_lists = [
             search_queries_for(
@@ -248,16 +264,21 @@ class ProductResolver:
 
         for queries in query_lists:
             for query in queries:
+                if is_catalogue_circuit_open():
+                    raise CatalogueUnavailableError(
+                        "Woolworths catalogue blocked from this host (using estimates)"
+                    )
                 results: list[ProductMatch] = []
-                for attempt in range(2):
-                    try:
-                        results = await self.adapter.search(query, limit=8)
-                        break
-                    except WoolworthsError:
-                        if attempt == 0:
-                            await asyncio.sleep(0.4)
-                            continue
-                        results = []
+                try:
+                    results = await self.adapter.search(query, limit=8)
+                    consecutive_errors = 0
+                except CatalogueUnavailableError:
+                    raise
+                except WoolworthsError as exc:
+                    consecutive_errors += 1
+                    if consecutive_errors >= 2:
+                        await trip_catalogue_circuit(str(exc))
+                    continue
                 for match in results:
                     if match.sku in seen_skus:
                         continue
@@ -368,7 +389,7 @@ class ProductResolver:
             elif "taco shell" in lower and "gluten" not in lower:
                 search_ingredient = ingredient.model_copy(update={"name": "taco shells"})
 
-        if self.offline_mode:
+        if self.offline_mode or is_catalogue_circuit_open():
             return self._offline_line(search_ingredient, profile)
 
         search_attempts: list[tuple[Ingredient, bool]] = [
@@ -381,11 +402,22 @@ class ProductResolver:
             search_attempts.extend([(sub_ing, False), (sub_ing, True)])
 
         for round_idx in range(3):
+            if is_catalogue_circuit_open():
+                break
             if round_idx > 0:
                 # Back off then retry — Woolworths search flakes under batch load
                 await asyncio.sleep(0.5 * (round_idx + 1))
             for attempt_ing, expanded in search_attempts:
-                ranked = await self._search_matches(attempt_ing, profile, expanded=expanded)
+                if is_catalogue_circuit_open():
+                    break
+                try:
+                    ranked = await self._search_matches(
+                        attempt_ing, profile, expanded=expanded
+                    )
+                except CatalogueUnavailableError:
+                    # Catalogue down — skip further fan-out; fall through to SKU/offline.
+                    ranked = []
+                    break
                 if not ranked:
                     continue
                 best, warnings = await self._select_match_for_profile(
@@ -395,11 +427,15 @@ class ProductResolver:
                     return self._line_from_match(
                         ingredient, attempt_ing, best, profile, warnings
                     )
+            else:
+                continue
+            break
 
         # Last resort: known stockcodes (salmon search is especially flaky)
-        fallback = await self._resolve_via_sku_fallback(search_ingredient, profile)
-        if fallback:
-            return fallback
+        if not is_catalogue_circuit_open():
+            fallback = await self._resolve_via_sku_fallback(search_ingredient, profile)
+            if fallback:
+                return fallback
 
         return self._offline_line(search_ingredient, profile)
 

@@ -62,7 +62,11 @@ from meal_planner.shop_coverage import (
     format_coverage_issue,
     heal_resolved_coverage,
 )
-from woolworths_adapter.client import WOOLWORTHS_CART_URL, WOOLWORTHS_CART_URL_FALLBACK
+from woolworths_adapter.client import (
+    WOOLWORTHS_CART_URL,
+    WOOLWORTHS_CART_URL_FALLBACK,
+    is_catalogue_circuit_open,
+)
 
 PROJECT_ROOT = Path(__file__).resolve().parents[4]
 PROFILES_DIR = PROJECT_ROOT / "profiles"
@@ -937,9 +941,22 @@ async def shop_resolve(
             )
             items = []
             unresolved = []
+            catalogue_fallback_notice = False
             for idx, ingredient in enumerate(ingredients, start=1):
                 try:
-                    if idx > 1:
+                    if is_catalogue_circuit_open():
+                        if not catalogue_fallback_notice:
+                            catalogue_fallback_notice = True
+                            yield _sse_event(
+                                "status",
+                                {
+                                    "message": "Woolworths catalogue unavailable — using price estimates…",
+                                    "phase": "search",
+                                    "total": total,
+                                    "done": idx - 1,
+                                },
+                            )
+                    elif idx > 1:
                         # Pace Woolworths search — batch resolve flakes under burst load
                         await asyncio.sleep(0.35)
                     line = await orch.resolver.resolve_ingredient(
@@ -974,9 +991,14 @@ async def shop_resolve(
                         },
                     )
 
-            # Second pass: re-resolve OFFLINE rows after a cool-down (search flakiness)
+            # Second pass: re-resolve OFFLINE rows after a cool-down (search flakiness).
+            # Skip when the catalogue circuit is open — retries only multiply the hang.
             offline_names = {i.ingredient.lower() for i in items if i.sku == "OFFLINE"}
-            if offline_names and not orch.resolver.offline_mode:
+            if (
+                offline_names
+                and not orch.resolver.offline_mode
+                and not is_catalogue_circuit_open()
+            ):
                 yield _sse_event(
                     "status",
                     {
@@ -1150,7 +1172,11 @@ async def shop_resolve(
 
             # Budget trim + coverage heal can leave OFFLINE proteins — re-resolve them
             offline_after = [i for i in resolved.items if i.sku == "OFFLINE"]
-            if offline_after and not orch.resolver.offline_mode:
+            if (
+                offline_after
+                and not orch.resolver.offline_mode
+                and not is_catalogue_circuit_open()
+            ):
                 by_name = {ing.name.lower(): ing for ing in ingredients}
                 fixed: list = []
                 for line in resolved.items:

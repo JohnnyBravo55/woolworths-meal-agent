@@ -12,6 +12,45 @@ class WoolworthsError(Exception):
     """Raised when Woolworths operations fail."""
 
 
+class CatalogueUnavailableError(WoolworthsError):
+    """Public catalogue blocked/unavailable — stop retrying searches in this process."""
+
+
+# Cloud hosts (Render etc.) often get Akamai-blocked. After a few hard failures,
+# fail fast so shop-resolve does not burn minutes on query fan-out.
+_CATALOGUE_CIRCUIT_LOCK = asyncio.Lock()
+_catalogue_circuit_open = False
+_catalogue_failures = 0
+_CATALOGUE_CIRCUIT_THRESHOLD = 1
+
+
+def is_catalogue_circuit_open() -> bool:
+    return _catalogue_circuit_open
+
+
+def reset_catalogue_circuit_for_tests() -> None:
+    """Test helper — clear process-wide catalogue circuit state."""
+    global _catalogue_circuit_open, _catalogue_failures
+    _catalogue_circuit_open = False
+    _catalogue_failures = 0
+
+
+async def trip_catalogue_circuit(reason: str = "Woolworths catalogue unavailable") -> None:
+    global _catalogue_circuit_open, _catalogue_failures
+    async with _CATALOGUE_CIRCUIT_LOCK:
+        _catalogue_failures += 1
+        if _catalogue_failures >= _CATALOGUE_CIRCUIT_THRESHOLD:
+            _catalogue_circuit_open = True
+    raise CatalogueUnavailableError(reason)
+
+
+async def note_catalogue_success() -> None:
+    global _catalogue_circuit_open, _catalogue_failures
+    async with _CATALOGUE_CIRCUIT_LOCK:
+        _catalogue_failures = 0
+        _catalogue_circuit_open = False
+
+
 def _is_auth_failure(exc: BaseException) -> bool:
     """True when Woolworths rejected the session (cookies expired, login failed)."""
     from woolies_cli.http_client import CookieExpiredError
@@ -224,6 +263,11 @@ class WoolworthsAdapter:
         """Login-free Woolworths NZ online catalogue search (shop-list pricing)."""
         import httpx
 
+        if is_catalogue_circuit_open():
+            raise CatalogueUnavailableError(
+                "Woolworths catalogue blocked from this host (using estimates)"
+            )
+
         size = min(max(1, limit), 48)
         headers = {
             "User-Agent": (
@@ -236,7 +280,11 @@ class WoolworthsAdapter:
             "Referer": f"{WOOLWORTHS_BASE_URL}/",
         }
         try:
-            async with httpx.AsyncClient(timeout=20.0, follow_redirects=True) as client:
+            # Keep timeouts short — cloud IPs stall on Akamai; shop-resolve fans out queries.
+            async with httpx.AsyncClient(
+                timeout=httpx.Timeout(12.0, connect=8.0),
+                follow_redirects=True,
+            ) as client:
                 resp = await client.get(
                     f"{WOOLWORTHS_BASE_URL}/api/v1/products",
                     params={
@@ -247,8 +295,16 @@ class WoolworthsAdapter:
                     },
                     headers=headers,
                 )
+                if resp.status_code in (403, 429):
+                    await trip_catalogue_circuit(
+                        f"Woolworths catalogue HTTP {resp.status_code}"
+                    )
                 resp.raise_for_status()
-                return self._matches_from_products_payload(resp.json(), limit)
+                matches = self._matches_from_products_payload(resp.json(), limit)
+                await note_catalogue_success()
+                return matches
+        except CatalogueUnavailableError:
+            raise
         except Exception as exc:
             raise WoolworthsError(f"Catalogue search failed for '{query}': {exc}") from exc
 
@@ -257,10 +313,17 @@ class WoolworthsAdapter:
 
         Session cookies are store/account-scoped and can disagree with the
         national online catalogue — keep cookies for cart/trolley only.
-        Falls back to a cookie-backed search only if the public API fails.
+        Falls back to a cookie-backed search only if the public API fails
+        for a non-circuit reason.
         """
+        if is_catalogue_circuit_open():
+            raise CatalogueUnavailableError(
+                "Woolworths catalogue blocked from this host (using estimates)"
+            )
         try:
             return await self.search_public_catalogue(query, limit=limit)
+        except CatalogueUnavailableError:
+            raise
         except WoolworthsError as public_exc:
             size = min(max(1, limit), 48)
             try:
@@ -272,12 +335,15 @@ class WoolworthsAdapter:
                         "inStockProductsOnly": "false",
                         "size": str(size),
                     },
+                    timeout=12.0,
                 )
-                return self._matches_from_products_payload(result, limit)
+                matches = self._matches_from_products_payload(result, limit)
+                await note_catalogue_success()
+                return matches
             except Exception as session_exc:
-                raise WoolworthsError(
+                await trip_catalogue_circuit(
                     f"Search failed for '{query}': {public_exc}; session fallback: {session_exc}"
-                ) from public_exc
+                )
 
     @staticmethod
     def is_auth_failure(exc: BaseException) -> bool:
