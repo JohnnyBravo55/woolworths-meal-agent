@@ -56,6 +56,7 @@ class MealAgentOrchestrator:
         """Drop meal plan + shop/cart artifacts so a new chef/prefs cannot reuse them."""
         self.state.meal_plan = None
         self.state.resolved_list = None
+        self.state.pantry_to_buy = []
         self.state.plan_approved = False
         self.state.products_approved = False
         self.state.cart_attempted = False
@@ -94,7 +95,9 @@ class MealAgentOrchestrator:
             self.state.advance_to(AgentPhase.PRODUCT_RESOLUTION)
 
     async def resolve_products(self, profile: UserProfile, plan: MealPlan) -> ResolvedGroceryList:
-        plan.shared_ingredients = build_shopping_ingredients(plan.meals, profile)
+        plan.shared_ingredients = build_shopping_ingredients(
+            plan.meals, profile, pantry_to_buy=list(self.state.pantry_to_buy or [])
+        )
         resolved = await self.resolver.resolve_all(
             plan.shared_ingredients, profile, meal_plan=plan
         )
@@ -119,12 +122,22 @@ class MealAgentOrchestrator:
                 heal_resolved_coverage,
             )
 
-            items, heal_issues = heal_resolved_coverage(plan.meals, list(resolved.items), profile)
+            items, heal_issues = heal_resolved_coverage(
+                plan.meals,
+                list(resolved.items),
+                profile,
+                pantry_to_buy=list(self.state.pantry_to_buy or []),
+            )
             coverage = list(resolved.coverage_issues or [])
             for msg in heal_issues:
                 if msg not in coverage:
                     coverage.append(msg)
-            for msg in audit_resolved_shop_coverage(plan.meals, items, profile):
+            for msg in audit_resolved_shop_coverage(
+                plan.meals,
+                items,
+                profile,
+                pantry_to_buy=list(self.state.pantry_to_buy or []),
+            ):
                 if msg not in coverage:
                     coverage.append(msg)
             resolved = self.budget_engine._recalculate(items, profile).model_copy(

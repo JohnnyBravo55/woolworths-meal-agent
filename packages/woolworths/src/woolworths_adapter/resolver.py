@@ -355,11 +355,6 @@ class ProductResolver:
         *,
         meal_plan: MealPlan | None = None,
     ) -> GroceryLineItem | None:
-        from meal_planner.pantry import is_in_pantry
-
-        if is_in_pantry(ingredient.name, profile.pantry_items):
-            return None
-
         if self._should_skip_search(ingredient, meal_plan):
             return None
 

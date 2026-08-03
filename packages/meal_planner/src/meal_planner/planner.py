@@ -254,6 +254,36 @@ _DAYS = ["Monday", "Tuesday", "Wednesday", "Thursday", "Friday", "Saturday", "Su
 
 _TEMPLATE_BASELINE_SERVINGS = 2.0
 
+# Template staples treated as pantry (LLM path sets is_pantry explicitly).
+_TEMPLATE_PANTRY_STAPLES = frozenset(
+    {
+        "soy sauce",
+        "olive oil",
+        "salt",
+        "pepper",
+        "fish sauce",
+        "sweet chilli",
+        "sweet chilli sauce",
+        "garlic powder",
+        "cumin",
+        "paprika",
+        "stock",
+        "chicken stock",
+        "vegetable stock",
+        "sugar",
+    }
+)
+
+
+def _template_ingredient(name: str, quantity: float, unit: str) -> Ingredient:
+    n = str(name).strip().lower()
+    return Ingredient(
+        name=n,
+        quantity=float(quantity),
+        unit=unit,
+        is_pantry=n in _TEMPLATE_PANTRY_STAPLES,
+    )
+
 
 def _template_to_meal(
     template: dict,
@@ -271,7 +301,7 @@ def _template_to_meal(
         # Scale weight/volume and multi-count lines; leave single packs alone.
         if unit_l in {"g", "kg", "ml", "l"} or (unit_l in {"each", "fillet", "fillets"} and q > 1):
             q = round(q * scale, 2) if unit_l in {"kg", "l"} else max(1.0, round(q * scale))
-        ingredients.append(Ingredient(name=name, quantity=q, unit=unit))
+        ingredients.append(_template_ingredient(name, q, unit))
     return Meal(
         name=template["name"],
         slot=slot,
@@ -514,12 +544,15 @@ class MealPlanner:
                 "explicitly labelled gluten-free. No banana bread, muffins, or baked goods "
                 "with gluten."
             )
-        pantry_note = ""
-        if profile.pantry_items:
-            pantry_note = (
-                "The household ALREADY HAS these items — use them in recipes but do NOT "
-                f"list them as shopping ingredients: {', '.join(profile.pantry_items)}."
-            )
+        pantry_note = (
+            "Mark each ingredient with is_pantry true or false. "
+            "is_pantry true ONLY for household staples: sauces, spices, salt, pepper, sugar, "
+            "stock, dried herbs/powders (e.g. soy sauce, sweet chilli, fish sauce, cumin, "
+            "paprika, garlic powder, olive oil). "
+            "Fresh produce, proteins, dairy, bread, and meal-specific bulk items must be "
+            "is_pantry false. Still list pantry staples on meal ingredients for cooking; "
+            "shopping exclusion is handled separately."
+        )
 
         lunch_mode_note = ""
         if profile.lunch_mode == LunchMode.PRACTICAL:
@@ -589,7 +622,6 @@ class MealPlanner:
                     "mandatory_items": normalize_mandatory_for_allergies(
                         profile.mandatory_items, profile
                     ),
-                    "pantry_items_already_at_home": profile.pantry_items,
                     "pantry_rules": pantry_note,
                     "dislikes": profile.dislikes,
                     "likes": profile.likes,
@@ -633,7 +665,12 @@ class MealPlanner:
                             "description": "string",
                             "prep_time_minutes": "int",
                             "ingredients": [
-                                {"name": "string", "quantity": "float", "unit": "string"}
+                                {
+                                    "name": "string",
+                                    "quantity": "float",
+                                    "unit": "string",
+                                    "is_pantry": "bool",
+                                }
                             ],
                             "steps": ["string"],
                         }
@@ -661,6 +698,7 @@ class MealPlanner:
                     name=ing["name"],
                     quantity=float(ing.get("quantity", 1)),
                     unit=ing.get("unit", "each"),
+                    is_pantry=bool(ing.get("is_pantry", False)),
                 )
                 for ing in item.get("ingredients", [])
             ]
@@ -705,7 +743,7 @@ class MealPlanner:
                 template = templates[i % len(templates)]
                 day = days[i % len(days)]
                 ingredients = [
-                    Ingredient(name=n, quantity=float(q), unit=u)
+                    _template_ingredient(n, float(q), u)
                     for n, q, u in template["ingredients"]
                 ]
                 meals.append(
@@ -769,7 +807,7 @@ class MealPlanner:
                     description=template["description"],
                     prep_time_minutes=target.prep_time_minutes,
                     ingredients=[
-                        Ingredient(name=n, quantity=float(q), unit=u)
+                        _template_ingredient(n, float(q), u)
                         for n, q, u in template["ingredients"]
                     ],
                     steps=template["steps"],
@@ -904,6 +942,7 @@ class MealPlanner:
                     name=ing["name"],
                     quantity=float(ing.get("quantity", 1)),
                     unit=ing.get("unit", "each"),
+                    is_pantry=bool(ing.get("is_pantry", False)),
                 )
                 for ing in item.get("ingredients", [])
             ]
