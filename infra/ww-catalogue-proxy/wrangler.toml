@@ -1,0 +1,6 @@
+name = "ww-catalogue-proxy"
+main = "src/index.js"
+compatibility_date = "2026-07-01"
+
+# Deploy: npx wrangler deploy
+# Then set Render env WOOLWORTHS_CATALOGUE_PROXY_URL=https://ww-catalogue-proxy.<account>.workers.dev
