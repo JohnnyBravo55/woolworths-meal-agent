@@ -1012,15 +1012,25 @@ async def shop_catalogue_queries(session: AgentSession = Depends(get_session)):
 
 @app.post("/api/shop/catalogue-hits")
 async def shop_catalogue_hits(
-    payload: CatalogueHitsRequest,
+    request: Request,
     session: AgentSession = Depends(get_session),
 ):
     """Accept browser-fetched WW search JSON so Render can resolve without egress."""
     from woolworths_adapter.client import reset_catalogue_circuit_for_tests
 
+    try:
+        data = await request.json()
+    except Exception as exc:  # noqa: BLE001
+        raise HTTPException(status_code=400, detail=f"Invalid JSON body: {exc}") from exc
+    if not isinstance(data, dict):
+        raise HTTPException(status_code=400, detail="Expected JSON object body")
+    raw_hits = data.get("hits") or {}
+    if not isinstance(raw_hits, dict):
+        raise HTTPException(status_code=400, detail="hits must be an object")
+
     adapter = session.orchestrator.resolver.adapter
     parsed: dict = {}
-    for raw_q, raw_payload in (payload.hits or {}).items():
+    for raw_q, raw_payload in raw_hits.items():
         q = (raw_q or "").strip()
         if not q or not isinstance(raw_payload, dict):
             continue
