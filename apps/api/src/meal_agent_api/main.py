@@ -738,60 +738,52 @@ async def plan_generate(
                 session.orchestrator.generate_plan(profile, on_llm_progress=on_llm_progress)
             )
             last_emit = 0.0
-            peak_chars = 0
-            retrying = False
+            wrote_status = False
 
-            def _writing_status(chars: int, *, retry: bool = False) -> dict:
+            def _writing_status(*, retry: bool = False) -> dict:
                 # done/total 0 → UI shows an indeterminate bar (not "3 of 5 meals").
-                if retry:
-                    msg = "OpenAI hiccup — retrying your meal plan…"
-                elif chars > 0:
-                    msg = f"Writing your meal plan… ({chars:,} characters)"
-                else:
-                    msg = "Waiting for OpenAI to start writing…"
+                msg = (
+                    "OpenAI hiccup — retrying your meal plan…"
+                    if retry
+                    else "Writing your meal plan…"
+                )
                 return {
                     "message": msg,
                     "done": 0,
                     "total": 0,
                     "phase": "generate",
-                    "chars": chars,
                 }
 
             while not task.done():
                 try:
                     chars = await asyncio.wait_for(progress_queue.get(), timeout=3.0)
                     if chars < 0:
-                        retrying = True
-                        peak_chars = 0
-                        yield _sse_event("status", _writing_status(0, retry=True))
+                        wrote_status = True
+                        yield _sse_event("status", _writing_status(retry=True))
                         last_emit = asyncio.get_running_loop().time()
                         continue
-                    # Drain backlog so UI tracks the latest length, not every token.
+                    # Drain token backlog — keep SSE alive without spamming the UI.
                     while not progress_queue.empty():
                         nxt = progress_queue.get_nowait()
                         if nxt < 0:
-                            retrying = True
-                            peak_chars = 0
                             chars = -1
                             break
-                        chars = max(chars, nxt)
                     if chars < 0:
-                        yield _sse_event("status", _writing_status(0, retry=True))
+                        wrote_status = True
+                        yield _sse_event("status", _writing_status(retry=True))
                         last_emit = asyncio.get_running_loop().time()
                         continue
-                    peak_chars = max(peak_chars, chars)
                     now = asyncio.get_running_loop().time()
-                    # Throttle status events — token spam looked like a stuck/resetting counter.
-                    if retrying or now - last_emit >= 0.45:
-                        retrying = False
+                    if not wrote_status or now - last_emit >= 8.0:
+                        wrote_status = True
                         last_emit = now
-                        yield _sse_event("status", _writing_status(peak_chars))
+                        yield _sse_event("status", _writing_status())
                 except asyncio.TimeoutError:
                     yield _sse_ping()
                     now = asyncio.get_running_loop().time()
                     if now - last_emit >= 8.0:
                         last_emit = now
-                        yield _sse_event("status", _writing_status(peak_chars))
+                        yield _sse_event("status", _writing_status())
             while not progress_queue.empty():
                 progress_queue.get_nowait()
             plan = await task
