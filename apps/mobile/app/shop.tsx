@@ -222,9 +222,9 @@ const styles = StyleSheet.create({
   // RN-web: reserve scrollbar gutter so qty/price is not painted under the thumb.
   listWeb: { scrollbarGutter: "stable" } as object,
   listContent: { paddingBottom: 160 },
-  // Extra inset — web overlay scrollbars still eat ~16–24px of the price column.
-  listContentWeb: { paddingRight: 28, paddingLeft: 0 },
-  rowWeb: { paddingRight: 8 },
+  // Extra inset — web overlay scrollbars still eat the price column without this.
+  listContentWeb: { paddingRight: 40 },
+  rowWeb: { paddingRight: 12 },
   summary: { fontSize: 14, color: theme.text, marginBottom: 8 },
   banner: {
     marginTop: 12,

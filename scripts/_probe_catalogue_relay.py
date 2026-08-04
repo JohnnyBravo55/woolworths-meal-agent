@@ -58,11 +58,15 @@ def main() -> int:
             return 1
 
         hits: dict[str, dict] = {}
-        for query in queries[:40]:
-            r = client.get(f"{proxy}/search", params={"q": query, "size": "8"})
+        for query in queries:
+            try:
+                r = client.get(f"{proxy}/search", params={"q": query, "size": "8"})
+            except Exception as exc:
+                print("search_err", query, exc)
+                continue
             if r.status_code == 200 and "products" in r.text:
                 hits[query] = r.json()
-        print("fetched_hits", len(hits))
+        print("fetched_hits", len(hits), "of", len(queries))
         up = client.post(f"{API}/api/shop/catalogue-hits", json={"hits": hits}).json()
         print("uploaded", up)
 
