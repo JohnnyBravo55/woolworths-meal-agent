@@ -9,10 +9,23 @@ from typing import Any
 from shared.models import ProductMatch
 
 
+# Preview Worker used when Render has no WOOLWORTHS_CATALOGUE_PROXY_URL set yet.
+# Claim/replace under your Cloudflare account for permanence (see infra/ww-catalogue-proxy).
+_DEFAULT_RENDER_CATALOGUE_PROXY = "https://ww-catalogue-proxy.copy-begonia.workers.dev"
+
+
 def catalogue_proxy_base_url() -> str | None:
-    """Optional Cloudflare (or other) proxy that can reach Woolworths from cloud hosts."""
+    """Optional Cloudflare (or other) proxy that can reach Woolworths from cloud hosts.
+
+    On Render, defaults to the hosted Worker when the env var is unset — Render's
+    own egress is Akamai-blocked, so direct catalogue search always fails there.
+    """
     raw = (os.environ.get("WOOLWORTHS_CATALOGUE_PROXY_URL") or "").strip().rstrip("/")
-    return raw or None
+    if raw:
+        return raw
+    if os.environ.get("RENDER", "").lower() in ("true", "1"):
+        return _DEFAULT_RENDER_CATALOGUE_PROXY
+    return None
 
 
 class WoolworthsError(Exception):

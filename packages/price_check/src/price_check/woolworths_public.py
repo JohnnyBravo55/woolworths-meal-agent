@@ -14,9 +14,16 @@ from typing import Any
 import httpx
 
 
+_DEFAULT_RENDER_CATALOGUE_PROXY = "https://ww-catalogue-proxy.copy-begonia.workers.dev"
+
+
 def catalogue_proxy_base_url() -> str | None:
     raw = (os.environ.get("WOOLWORTHS_CATALOGUE_PROXY_URL") or "").strip().rstrip("/")
-    return raw or None
+    if raw:
+        return raw
+    if os.environ.get("RENDER", "").lower() in ("true", "1"):
+        return _DEFAULT_RENDER_CATALOGUE_PROXY
+    return None
 
 from price_check.links import enrich_line, with_store_url
 from price_check.matching import pick_best_product, score_product_name, search_query_variants
