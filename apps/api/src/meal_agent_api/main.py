@@ -1012,7 +1012,7 @@ async def shop_catalogue_queries(session: AgentSession = Depends(get_session)):
 
 @app.post("/api/shop/catalogue-hits")
 async def shop_catalogue_hits(
-    body: CatalogueHitsRequest,
+    payload: CatalogueHitsRequest,
     session: AgentSession = Depends(get_session),
 ):
     """Accept browser-fetched WW search JSON so Render can resolve without egress."""
@@ -1020,11 +1020,11 @@ async def shop_catalogue_hits(
 
     adapter = session.orchestrator.resolver.adapter
     parsed: dict = {}
-    for raw_q, payload in (body.hits or {}).items():
+    for raw_q, raw_payload in (payload.hits or {}).items():
         q = (raw_q or "").strip()
-        if not q or not isinstance(payload, dict):
+        if not q or not isinstance(raw_payload, dict):
             continue
-        matches = adapter._matches_from_products_payload(payload, 8)
+        matches = adapter._matches_from_products_payload(raw_payload, 8)
         if matches:
             parsed[q] = matches
     adapter.set_search_overrides(parsed)
