@@ -13,7 +13,7 @@ npx wrangler deploy
 
 `render.yaml` currently points at the preview Worker:
 
-`https://ww-catalogue-proxy.copy-begonia.workers.dev`
+`https://ww-catalogue-proxy.modern-borogovia.workers.dev`
 
 Claim that temporary Cloudflare account (or redeploy under your own account) so the URL stays live, then update `WOOLWORTHS_CATALOGUE_PROXY_URL` if the hostname changes.
 

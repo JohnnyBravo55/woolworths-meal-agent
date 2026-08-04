@@ -11,7 +11,9 @@ from shared.models import ProductMatch
 
 # Preview Worker used when Render has no WOOLWORTHS_CATALOGUE_PROXY_URL set yet.
 # Claim/replace under your Cloudflare account for permanence (see infra/ww-catalogue-proxy).
-_DEFAULT_RENDER_CATALOGUE_PROXY = "https://ww-catalogue-proxy.copy-begonia.workers.dev"
+_DEFAULT_RENDER_CATALOGUE_PROXY = (
+    "https://ww-catalogue-proxy.modern-borogovia.workers.dev"
+)
 
 
 def catalogue_proxy_base_url() -> str | None:

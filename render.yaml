@@ -27,7 +27,7 @@ services:
         sync: false
       # Cloudflare Worker that can reach Woolworths (Render IPs are Akamai-blocked)
       - key: WOOLWORTHS_CATALOGUE_PROXY_URL
-        value: https://ww-catalogue-proxy.copy-begonia.workers.dev
+        value: https://ww-catalogue-proxy.modern-borogovia.workers.dev
     disk:
       name: meal-agent-data
       mountPath: /app/data

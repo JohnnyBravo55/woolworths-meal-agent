@@ -14,7 +14,9 @@ from typing import Any
 import httpx
 
 
-_DEFAULT_RENDER_CATALOGUE_PROXY = "https://ww-catalogue-proxy.copy-begonia.workers.dev"
+_DEFAULT_RENDER_CATALOGUE_PROXY = (
+    "https://ww-catalogue-proxy.modern-borogovia.workers.dev"
+)
 
 
 def catalogue_proxy_base_url() -> str | None:
