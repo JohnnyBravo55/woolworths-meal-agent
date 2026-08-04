@@ -957,6 +957,60 @@ async def set_pantry_to_buy(
 # --- Shop ---
 
 
+@app.get("/api/shop/catalogue-queries")
+async def shop_catalogue_queries(session: AgentSession = Depends(get_session)):
+    """Unique Woolworths search queries for the current plan (for browser relay)."""
+    from woolworths_adapter.client import catalogue_proxy_base_url
+    from woolworths_adapter.search_helpers import search_queries_for
+
+    profile = _require_profile(session)
+    plan = _require_plan(session)
+    if not session.state.plan_approved:
+        raise HTTPException(status_code=400, detail="Approve meal plan first")
+
+    ingredients = build_shopping_ingredients(
+        plan.meals, profile, pantry_to_buy=list(session.state.pantry_to_buy or [])
+    )
+    seen: set[str] = set()
+    queries: list[str] = []
+    for ing in ingredients:
+        for q in search_queries_for(ing.name, profile, profile.chef_id, expanded=True):
+            key = q.strip().lower()
+            if not key or key in seen:
+                continue
+            seen.add(key)
+            queries.append(q.strip())
+    proxy = catalogue_proxy_base_url()
+    return {
+        "queries": queries,
+        "proxy_url": proxy or "",
+        "ingredient_count": len(ingredients),
+    }
+
+
+@app.post("/api/shop/catalogue-hits")
+async def shop_catalogue_hits(
+    body: CatalogueHitsRequest,
+    session: AgentSession = Depends(get_session),
+):
+    """Accept browser-fetched WW search JSON so Render can resolve without egress."""
+    from woolworths_adapter.client import reset_catalogue_circuit_for_tests
+
+    adapter = session.orchestrator.resolver.adapter
+    parsed: dict = {}
+    for raw_q, payload in (body.hits or {}).items():
+        q = (raw_q or "").strip()
+        if not q or not isinstance(payload, dict):
+            continue
+        matches = adapter._matches_from_products_payload(payload, 8)
+        if matches:
+            parsed[q] = matches
+    adapter.set_search_overrides(parsed)
+    # Clear any prior process circuit so override-backed resolve can run.
+    reset_catalogue_circuit_for_tests()
+    return {"ok": True, "query_count": len(parsed)}
+
+
 @app.post("/api/shop/resolve")
 async def shop_resolve(
     force: bool = False,
@@ -973,6 +1027,11 @@ async def shop_resolve(
     # Shop-list pricing always uses the Woolworths online catalogue (login-free).
     # Session cookies are only required later for add-to-cart.
     orch.resolver.offline_mode = False
+    # Browser-uploaded catalogue hits should not be blocked by a prior circuit trip.
+    if getattr(orch.resolver.adapter, "has_search_overrides", lambda: False)():
+        from woolworths_adapter.client import reset_catalogue_circuit_for_tests
+
+        reset_catalogue_circuit_for_tests()
 
     if session.state.resolved_list and not force:
 

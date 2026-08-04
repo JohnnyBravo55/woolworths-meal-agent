@@ -104,6 +104,26 @@ class WoolworthsAdapter:
         self.headless = headless
         self._client = None
         self._label_cache: dict[str, Any] = {}
+        # Browser-fetched catalogue payloads (query → matches). Used when the
+        # API host cannot reach Woolworths / the catalogue proxy (Render→CF 403).
+        self._search_overrides: dict[str, list[ProductMatch]] = {}
+
+    def set_search_overrides(self, mapping: dict[str, list[ProductMatch]]) -> None:
+        self._search_overrides = {
+            str(k).strip().lower(): list(v) for k, v in mapping.items() if str(k).strip()
+        }
+
+    def clear_search_overrides(self) -> None:
+        self._search_overrides = {}
+
+    def has_search_overrides(self) -> bool:
+        return bool(self._search_overrides)
+
+    def _override_matches(self, query: str, limit: int) -> list[ProductMatch] | None:
+        key = query.strip().lower()
+        if key not in self._search_overrides:
+            return None
+        return self._search_overrides[key][:limit]
 
     def _get_client(self):
         if self._client is None:
@@ -284,9 +304,13 @@ class WoolworthsAdapter:
 
         When ``WOOLWORTHS_CATALOGUE_PROXY_URL`` is set (e.g. Cloudflare Worker),
         search goes through that proxy so Render/Akamai-blocked hosts still get
-        live prices.
+        live prices. Browser-uploaded overrides take priority.
         """
         import httpx
+
+        cached = self._override_matches(query, limit)
+        if cached is not None:
+            return cached
 
         if is_catalogue_circuit_open():
             raise CatalogueUnavailableError(
@@ -325,6 +349,13 @@ class WoolworthsAdapter:
             ) as client:
                 resp = await client.get(url, params=params, headers=headers)
                 if resp.status_code in (403, 429):
+                    # Proxy 403 often means the *API host* cannot call the Worker
+                    # (CF bot fight), not that Woolworths is down — do not trip the
+                    # process circuit so browser-uploaded overrides can still work.
+                    if proxy:
+                        raise WoolworthsError(
+                            f"Catalogue proxy HTTP {resp.status_code} for '{query}'"
+                        )
                     await trip_catalogue_circuit(
                         f"Woolworths catalogue HTTP {resp.status_code}"
                     )
@@ -333,6 +364,8 @@ class WoolworthsAdapter:
                 await note_catalogue_success()
                 return matches
         except CatalogueUnavailableError:
+            raise
+        except WoolworthsError:
             raise
         except Exception as exc:
             raise WoolworthsError(f"Catalogue search failed for '{query}': {exc}") from exc
@@ -345,6 +378,9 @@ class WoolworthsAdapter:
         Falls back to a cookie-backed search only if the public API fails
         for a non-circuit reason.
         """
+        cached = self._override_matches(query, limit)
+        if cached is not None:
+            return cached
         if is_catalogue_circuit_open():
             raise CatalogueUnavailableError(
                 "Woolworths catalogue blocked from this host (using estimates)"
