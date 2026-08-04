@@ -30,7 +30,7 @@ function defaultTab(
 
 function ShopRow({ item }: { item: GroceryLineItem }) {
   return (
-    <View style={styles.row}>
+    <View style={[styles.row, Platform.OS === "web" ? styles.rowWeb : null]}>
       <View style={styles.rowMain}>
         <Text style={styles.ing}>{item.ingredient}</Text>
         <Text style={styles.prod}>{item.product_name}</Text>
@@ -222,7 +222,9 @@ const styles = StyleSheet.create({
   // RN-web: reserve scrollbar gutter so qty/price is not painted under the thumb.
   listWeb: { scrollbarGutter: "stable" } as object,
   listContent: { paddingBottom: 160 },
-  listContentWeb: { paddingRight: 20 },
+  // Extra inset — web overlay scrollbars still eat ~16–24px of the price column.
+  listContentWeb: { paddingRight: 28, paddingLeft: 0 },
+  rowWeb: { paddingRight: 8 },
   summary: { fontSize: 14, color: theme.text, marginBottom: 8 },
   banner: {
     marginTop: 12,

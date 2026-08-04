@@ -197,9 +197,10 @@ export default function RecipesScreen() {
       message: "Starting product search…",
     });
 
-    // Hosted web: browser fetches WW via Cloudflare Worker (Render egress is blocked),
-    // then uploads hits so shop-resolve can match real SKUs.
-    if (Platform.OS === "web" && isHostedApiUrl(getApiBaseUrl())) {
+    // Web: browser fetches WW via Cloudflare Worker (Render→Worker is often 403),
+    // then uploads hits so shop-resolve can match real SKUs. Always try on web —
+    // do not gate on isHostedApiUrl (empty/mis-set EXPO_PUBLIC_API_URL would skip it).
+    if (Platform.OS === "web") {
       try {
         setResolveProgress({
           done: 0,
