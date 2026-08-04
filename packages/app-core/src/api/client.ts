@@ -329,9 +329,36 @@ export function createApiClient(config: ApiClientConfig) {
         proxy_url: string;
         ingredient_count: number;
       }>("/api/shop/catalogue-queries");
-      if (!proxy_url || queries.length === 0) {
+      if (queries.length === 0) {
         return { query_count: 0, fetched: 0 };
       }
+      // Temporary workers.dev hostnames rotate when unclaimed — keep a fallback
+      // so hosted web can still fetch after an API deploy lags behind.
+      const proxyCandidates = [
+        proxy_url,
+        "https://ww-catalogue-proxy.modern-borogovia.workers.dev",
+      ]
+        .map((u) => (u || "").trim().replace(/\/$/, ""))
+        .filter((u, i, all) => u && all.indexOf(u) === i);
+
+      let proxyBase = "";
+      for (const candidate of proxyCandidates) {
+        try {
+          const probe = await fetch(`${candidate}/health`, {
+            headers: { Accept: "application/json" },
+          });
+          if (probe.ok) {
+            proxyBase = candidate;
+            break;
+          }
+        } catch {
+          // try next
+        }
+      }
+      if (!proxyBase) {
+        return { query_count: queries.length, fetched: 0 };
+      }
+
       const hits: Record<string, unknown> = {};
       const concurrency = 4;
       let done = 0;
@@ -339,7 +366,7 @@ export function createApiClient(config: ApiClientConfig) {
         const batch = queries.slice(i, i + concurrency);
         await Promise.all(
           batch.map(async (q) => {
-            const url = new URL(`${proxy_url.replace(/\/$/, "")}/search`);
+            const url = new URL(`${proxyBase}/search`);
             url.searchParams.set("q", q);
             url.searchParams.set("size", "8");
             try {
