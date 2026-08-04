@@ -737,42 +737,61 @@ async def plan_generate(
             task = asyncio.create_task(
                 session.orchestrator.generate_plan(profile, on_llm_progress=on_llm_progress)
             )
-            last_status = 0.0
-            last_chars = 0
+            last_emit = 0.0
+            peak_chars = 0
+            retrying = False
+
+            def _writing_status(chars: int, *, retry: bool = False) -> dict:
+                # done/total 0 → UI shows an indeterminate bar (not "3 of 5 meals").
+                if retry:
+                    msg = "OpenAI hiccup — retrying your meal plan…"
+                elif chars > 0:
+                    msg = f"Writing your meal plan… ({chars:,} characters)"
+                else:
+                    msg = "Waiting for OpenAI to start writing…"
+                return {
+                    "message": msg,
+                    "done": 0,
+                    "total": 0,
+                    "phase": "generate",
+                    "chars": chars,
+                }
+
             while not task.done():
                 try:
                     chars = await asyncio.wait_for(progress_queue.get(), timeout=3.0)
-                    last_chars = chars
-                    yield _sse_event(
-                        "status",
-                        {
-                            "message": f"Chef is writing your plan… ({chars:,} chars)",
-                            "done": 3,
-                            "total": 5,
-                            "phase": "generate",
-                            "chars": chars,
-                        },
-                    )
+                    if chars < 0:
+                        retrying = True
+                        peak_chars = 0
+                        yield _sse_event("status", _writing_status(0, retry=True))
+                        last_emit = asyncio.get_running_loop().time()
+                        continue
+                    # Drain backlog so UI tracks the latest length, not every token.
+                    while not progress_queue.empty():
+                        nxt = progress_queue.get_nowait()
+                        if nxt < 0:
+                            retrying = True
+                            peak_chars = 0
+                            chars = -1
+                            break
+                        chars = max(chars, nxt)
+                    if chars < 0:
+                        yield _sse_event("status", _writing_status(0, retry=True))
+                        last_emit = asyncio.get_running_loop().time()
+                        continue
+                    peak_chars = max(peak_chars, chars)
+                    now = asyncio.get_running_loop().time()
+                    # Throttle status events — token spam looked like a stuck/resetting counter.
+                    if retrying or now - last_emit >= 0.45:
+                        retrying = False
+                        last_emit = now
+                        yield _sse_event("status", _writing_status(peak_chars))
                 except asyncio.TimeoutError:
                     yield _sse_ping()
                     now = asyncio.get_running_loop().time()
-                    if now - last_status >= 8.0:
-                        last_status = now
-                        msg = (
-                            f"Chef is writing your plan… ({last_chars:,} chars)"
-                            if last_chars
-                            else "Waiting for OpenAI to start streaming…"
-                        )
-                        yield _sse_event(
-                            "status",
-                            {
-                                "message": msg,
-                                "done": 3,
-                                "total": 5,
-                                "phase": "generate",
-                                "chars": last_chars,
-                            },
-                        )
+                    if now - last_emit >= 8.0:
+                        last_emit = now
+                        yield _sse_event("status", _writing_status(peak_chars))
             while not progress_queue.empty():
                 progress_queue.get_nowait()
             plan = await task

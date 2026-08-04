@@ -65,7 +65,7 @@ export function ParallelLoadingModal({
                 {planReady
                   ? "Finish Woolworths sign-in for live product prices, or continue without."
                   : message}
-                {!planReady && total > 0 ? ` · ${done}/${total}` : ""}
+                {!planReady && total > 0 ? ` · step ${done}/${total}` : ""}
                 {ingredient ? ` · ${ingredient}` : ""}
               </Text>
               {!planReady && (
@@ -109,7 +109,7 @@ export function ParallelLoadingModal({
           <Text style={styles.title}>{title}</Text>
           <Text style={styles.message}>
             {message}
-            {total > 0 ? `\n${done} of ${total} complete` : ""}
+            {total > 0 ? `\nStep ${done} of ${total}` : ""}
             {ingredient ? `\n${ingredient}` : ""}
           </Text>
           <View style={styles.barBg}>

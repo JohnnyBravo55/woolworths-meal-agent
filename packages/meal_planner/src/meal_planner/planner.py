@@ -488,6 +488,11 @@ class MealPlanner:
                 except Exception as exc:
                     last_exc = exc
                     if attempt == 0 and self._is_retryable_llm_error(exc):
+                        if on_llm_progress is not None:
+                            # Negative sentinel: API shows "retrying" instead of resetting chars.
+                            maybe = on_llm_progress(-1)
+                            if maybe is not None:
+                                await maybe
                         await asyncio.sleep(1.0)
                         continue
                     break
