@@ -4,7 +4,6 @@ from __future__ import annotations
 
 import asyncio
 import json
-import os
 import re
 import time
 from functools import lru_cache
@@ -12,18 +11,6 @@ from pathlib import Path
 from typing import Any
 
 import httpx
-
-
-_DEFAULT_RENDER_CATALOGUE_PROXY = "https://ww-catalogue-proxy.copy-begonia.workers.dev"
-
-
-def catalogue_proxy_base_url() -> str | None:
-    raw = (os.environ.get("WOOLWORTHS_CATALOGUE_PROXY_URL") or "").strip().rstrip("/")
-    if raw:
-        return raw
-    if os.environ.get("RENDER", "").lower() in ("true", "1"):
-        return _DEFAULT_RENDER_CATALOGUE_PROXY
-    return None
 
 from price_check.links import enrich_line, with_store_url
 from price_check.matching import pick_best_product, score_product_name, search_query_variants
@@ -233,28 +220,18 @@ async def search_products(query: str, *, limit: int = 8) -> list[dict[str, Any]]
         raise WoolworthsCatalogueUnavailable(
             "Woolworths catalogue blocked from this host (using estimates)"
         )
-    size = str(min(max(1, limit), 48))
-    proxy = catalogue_proxy_base_url()
-    if proxy:
-        search_url = f"{proxy}/search"
-        params = {"q": q, "size": size}
-        headers = {"Accept": "application/json"}
-    else:
-        search_url = _SEARCH
-        params = {
-            "target": "search",
-            "search": q,
-            "inStockProductsOnly": "false",
-            "size": size,
-        }
-        headers = _HEADERS
+    params = {
+        "target": "search",
+        "search": q,
+        "inStockProductsOnly": "false",
+        "size": str(min(max(1, limit), 48)),
+    }
     last_exc: Exception | None = None
-    items: list[dict[str, Any]] = []
     async with _WW_SEM:
         client = await _get_client()
         for attempt in range(2):
             try:
-                resp = await client.get(search_url, params=params, headers=headers)
+                resp = await client.get(_SEARCH, params=params, headers=_HEADERS)
                 if resp.status_code in (403, 429):
                     await _trip_circuit(f"Woolworths search HTTP {resp.status_code}")
                 if resp.status_code in (502, 503):
@@ -263,13 +240,10 @@ async def search_products(query: str, *, limit: int = 8) -> list[dict[str, Any]]
                         request=resp.request,
                         response=resp,
                     )
-                    if not proxy:
-                        try:
-                            await client.get(
-                                _HOME, headers={**_HEADERS, "Accept": "text/html,*/*"}
-                            )
-                        except httpx.HTTPError:
-                            pass
+                    try:
+                        await client.get(_HOME, headers={**_HEADERS, "Accept": "text/html,*/*"})
+                    except httpx.HTTPError:
+                        pass
                     await asyncio.sleep(0.35 * (attempt + 1))
                     continue
                 resp.raise_for_status()
