@@ -196,6 +196,32 @@ export default function RecipesScreen() {
       phase: "search",
       message: "Starting product search…",
     });
+
+    // Hosted web: browser fetches WW via Cloudflare Worker (Render egress is blocked),
+    // then uploads hits so shop-resolve can match real SKUs.
+    if (Platform.OS === "web" && isHostedApiUrl(getApiBaseUrl())) {
+      try {
+        setResolveProgress({
+          done: 0,
+          total: 0,
+          ingredient: "",
+          phase: "search",
+          message: "Loading Woolworths catalogue…",
+        });
+        await api.prefetchCatalogueViaProxy((done, total) => {
+          setResolveProgress({
+            done,
+            total,
+            ingredient: "",
+            phase: "search",
+            message: `Loading Woolworths catalogue… ${done}/${total}`,
+          });
+        });
+      } catch {
+        // Continue — resolve may still work via server proxy or fall back to estimates.
+      }
+    }
+
     await runResolveSSE(force);
   };
 

@@ -177,6 +177,12 @@ def cart_result_out(result, export_paths: list[str]) -> CartResultOut:
     )
 
 
+class CatalogueHitsRequest(BaseModel):
+    """Browser-fetched Woolworths search payloads keyed by query string."""
+
+    hits: dict[str, dict] = Field(default_factory=dict)
+
+
 class PantryToBuyRequest(BaseModel):
     items: list[str] = Field(default_factory=list)
 

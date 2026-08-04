@@ -242,7 +242,8 @@ class ProductResolver:
         """
         from meal_planner.ingredient_normalize import fruit_fallback_queries, is_fruit_ingredient
 
-        if is_catalogue_circuit_open():
+        has_overrides = bool(getattr(self.adapter, "has_search_overrides", lambda: False)())
+        if is_catalogue_circuit_open() and not has_overrides:
             raise CatalogueUnavailableError(
                 "Woolworths catalogue blocked from this host (using estimates)"
             )
@@ -264,7 +265,7 @@ class ProductResolver:
 
         for queries in query_lists:
             for query in queries:
-                if is_catalogue_circuit_open():
+                if is_catalogue_circuit_open() and not has_overrides:
                     raise CatalogueUnavailableError(
                         "Woolworths catalogue blocked from this host (using estimates)"
                     )
@@ -389,7 +390,8 @@ class ProductResolver:
             elif "taco shell" in lower and "gluten" not in lower:
                 search_ingredient = ingredient.model_copy(update={"name": "taco shells"})
 
-        if self.offline_mode or is_catalogue_circuit_open():
+        has_overrides = bool(getattr(self.adapter, "has_search_overrides", lambda: False)())
+        if self.offline_mode or (is_catalogue_circuit_open() and not has_overrides):
             return self._offline_line(search_ingredient, profile)
 
         search_attempts: list[tuple[Ingredient, bool]] = [
@@ -402,13 +404,13 @@ class ProductResolver:
             search_attempts.extend([(sub_ing, False), (sub_ing, True)])
 
         for round_idx in range(3):
-            if is_catalogue_circuit_open():
+            if is_catalogue_circuit_open() and not has_overrides:
                 break
             if round_idx > 0:
                 # Back off then retry — Woolworths search flakes under batch load
                 await asyncio.sleep(0.5 * (round_idx + 1))
             for attempt_ing, expanded in search_attempts:
-                if is_catalogue_circuit_open():
+                if is_catalogue_circuit_open() and not has_overrides:
                     break
                 try:
                     ranked = await self._search_matches(
