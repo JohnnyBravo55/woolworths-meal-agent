@@ -3,9 +3,29 @@
 from __future__ import annotations
 
 import asyncio
+import os
 from typing import Any
 
 from shared.models import ProductMatch
+
+
+# Preview Worker used when Render has no WOOLWORTHS_CATALOGUE_PROXY_URL set yet.
+# Claim/replace under your Cloudflare account for permanence (see infra/ww-catalogue-proxy).
+_DEFAULT_RENDER_CATALOGUE_PROXY = "https://ww-catalogue-proxy.copy-begonia.workers.dev"
+
+
+def catalogue_proxy_base_url() -> str | None:
+    """Optional Cloudflare (or other) proxy that can reach Woolworths from cloud hosts.
+
+    On Render, defaults to the hosted Worker when the env var is unset — Render's
+    own egress is Akamai-blocked, so direct catalogue search always fails there.
+    """
+    raw = (os.environ.get("WOOLWORTHS_CATALOGUE_PROXY_URL") or "").strip().rstrip("/")
+    if raw:
+        return raw
+    if os.environ.get("RENDER", "").lower() in ("true", "1"):
+        return _DEFAULT_RENDER_CATALOGUE_PROXY
+    return None
 
 
 class WoolworthsError(Exception):
@@ -84,6 +104,26 @@ class WoolworthsAdapter:
         self.headless = headless
         self._client = None
         self._label_cache: dict[str, Any] = {}
+        # Browser-fetched catalogue payloads (query → matches). Used when the
+        # API host cannot reach Woolworths / the catalogue proxy (Render→CF 403).
+        self._search_overrides: dict[str, list[ProductMatch]] = {}
+
+    def set_search_overrides(self, mapping: dict[str, list[ProductMatch]]) -> None:
+        self._search_overrides = {
+            str(k).strip().lower(): list(v) for k, v in mapping.items() if str(k).strip()
+        }
+
+    def clear_search_overrides(self) -> None:
+        self._search_overrides = {}
+
+    def has_search_overrides(self) -> bool:
+        return bool(self._search_overrides)
+
+    def _override_matches(self, query: str, limit: int) -> list[ProductMatch] | None:
+        key = query.strip().lower()
+        if key not in self._search_overrides:
+            return None
+        return self._search_overrides[key][:limit]
 
     def _get_client(self):
         if self._client is None:
@@ -260,8 +300,17 @@ class WoolworthsAdapter:
         return matches[:limit]
 
     async def search_public_catalogue(self, query: str, limit: int = 10) -> list[ProductMatch]:
-        """Login-free Woolworths NZ online catalogue search (shop-list pricing)."""
+        """Login-free Woolworths NZ online catalogue search (shop-list pricing).
+
+        When ``WOOLWORTHS_CATALOGUE_PROXY_URL`` is set (e.g. Cloudflare Worker),
+        search goes through that proxy so Render/Akamai-blocked hosts still get
+        live prices. Browser-uploaded overrides take priority.
+        """
         import httpx
+
+        cached = self._override_matches(query, limit)
+        if cached is not None:
+            return cached
 
         if is_catalogue_circuit_open():
             raise CatalogueUnavailableError(
@@ -269,33 +318,44 @@ class WoolworthsAdapter:
             )
 
         size = min(max(1, limit), 48)
-        headers = {
-            "User-Agent": (
-                "Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 "
-                "(KHTML, like Gecko) Chrome/120.0.0.0 Safari/537.36"
-            ),
-            "Accept": "application/json",
-            "x-requested-with": "OnlineShopping_Web",
-            "Origin": WOOLWORTHS_BASE_URL,
-            "Referer": f"{WOOLWORTHS_BASE_URL}/",
-        }
+        proxy = catalogue_proxy_base_url()
+        if proxy:
+            url = f"{proxy}/search"
+            params = {"q": query, "size": str(size)}
+            headers = {"Accept": "application/json"}
+        else:
+            url = f"{WOOLWORTHS_BASE_URL}/api/v1/products"
+            params = {
+                "target": "search",
+                "search": query,
+                "inStockProductsOnly": "false",
+                "size": str(size),
+            }
+            headers = {
+                "User-Agent": (
+                    "Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 "
+                    "(KHTML, like Gecko) Chrome/120.0.0.0 Safari/537.36"
+                ),
+                "Accept": "application/json",
+                "x-requested-with": "OnlineShopping_Web",
+                "Origin": WOOLWORTHS_BASE_URL,
+                "Referer": f"{WOOLWORTHS_BASE_URL}/",
+            }
         try:
             # Keep timeouts short — cloud IPs stall on Akamai; shop-resolve fans out queries.
             async with httpx.AsyncClient(
                 timeout=httpx.Timeout(12.0, connect=8.0),
                 follow_redirects=True,
             ) as client:
-                resp = await client.get(
-                    f"{WOOLWORTHS_BASE_URL}/api/v1/products",
-                    params={
-                        "target": "search",
-                        "search": query,
-                        "inStockProductsOnly": "false",
-                        "size": str(size),
-                    },
-                    headers=headers,
-                )
+                resp = await client.get(url, params=params, headers=headers)
                 if resp.status_code in (403, 429):
+                    # Proxy 403 often means the *API host* cannot call the Worker
+                    # (CF bot fight), not that Woolworths is down — do not trip the
+                    # process circuit so browser-uploaded overrides can still work.
+                    if proxy:
+                        raise WoolworthsError(
+                            f"Catalogue proxy HTTP {resp.status_code} for '{query}'"
+                        )
                     await trip_catalogue_circuit(
                         f"Woolworths catalogue HTTP {resp.status_code}"
                     )
@@ -304,6 +364,8 @@ class WoolworthsAdapter:
                 await note_catalogue_success()
                 return matches
         except CatalogueUnavailableError:
+            raise
+        except WoolworthsError:
             raise
         except Exception as exc:
             raise WoolworthsError(f"Catalogue search failed for '{query}': {exc}") from exc
@@ -316,6 +378,9 @@ class WoolworthsAdapter:
         Falls back to a cookie-backed search only if the public API fails
         for a non-circuit reason.
         """
+        cached = self._override_matches(query, limit)
+        if cached is not None:
+            return cached
         if is_catalogue_circuit_open():
             raise CatalogueUnavailableError(
                 "Woolworths catalogue blocked from this host (using estimates)"

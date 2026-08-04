@@ -306,6 +306,70 @@ export function createApiClient(config: ApiClientConfig) {
         body: JSON.stringify({ items }),
       }),
 
+    getCatalogueQueries: () =>
+      jsonFetch<{ queries: string[]; proxy_url: string; ingredient_count: number }>(
+        "/api/shop/catalogue-queries",
+      ),
+
+    uploadCatalogueHits: (hits: Record<string, unknown>) =>
+      jsonFetch<{ ok: boolean; query_count: number }>("/api/shop/catalogue-hits", {
+        method: "POST",
+        body: JSON.stringify({ hits }),
+      }),
+
+    /**
+     * Browser-side WW catalogue fetch via Cloudflare Worker, then upload to API.
+     * Needed when Render cannot call the Worker / Woolworths (Akamai / bot fight).
+     */
+    prefetchCatalogueViaProxy: async (
+      onProgress?: (done: number, total: number) => void,
+    ) => {
+      const { queries, proxy_url } = await jsonFetch<{
+        queries: string[];
+        proxy_url: string;
+        ingredient_count: number;
+      }>("/api/shop/catalogue-queries");
+      if (!proxy_url || queries.length === 0) {
+        return { query_count: 0, fetched: 0 };
+      }
+      const hits: Record<string, unknown> = {};
+      const concurrency = 4;
+      let done = 0;
+      for (let i = 0; i < queries.length; i += concurrency) {
+        const batch = queries.slice(i, i + concurrency);
+        await Promise.all(
+          batch.map(async (q) => {
+            const url = new URL(`${proxy_url.replace(/\/$/, "")}/search`);
+            url.searchParams.set("q", q);
+            url.searchParams.set("size", "8");
+            try {
+              const res = await fetch(url.toString(), {
+                headers: { Accept: "application/json" },
+              });
+              if (!res.ok) return;
+              const payload = (await res.json()) as unknown;
+              if (payload && typeof payload === "object" && "products" in (payload as object)) {
+                hits[q] = payload;
+              }
+            } catch {
+              // Skip failed queries — API will fall back / use what we have.
+            } finally {
+              done += 1;
+              onProgress?.(done, queries.length);
+            }
+          }),
+        );
+      }
+      const uploaded = await jsonFetch<{ ok: boolean; query_count: number }>(
+        "/api/shop/catalogue-hits",
+        {
+          method: "POST",
+          body: JSON.stringify({ hits }),
+        },
+      );
+      return { query_count: queries.length, fetched: uploaded.query_count };
+    },
+
     searchStores: (opts?: { q?: string; chain?: StoreChain; limit?: number }) => {
       const params = new URLSearchParams();
       if (opts?.q) params.set("q", opts.q);

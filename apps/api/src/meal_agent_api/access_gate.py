@@ -18,6 +18,7 @@ _OPEN_PATHS = frozenset(
     {
         "/api/health",
         "/api/health/openai",
+        "/api/health/catalogue",
         "/docs",
         "/openapi.json",
         "/redoc",
