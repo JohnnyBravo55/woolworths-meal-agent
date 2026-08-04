@@ -123,6 +123,54 @@ async def test_search_public_catalogue_defaults_proxy_on_render(monkeypatch):
 
 
 @pytest.mark.asyncio
+async def test_search_overrides_bypass_circuit_and_network(monkeypatch):
+    monkeypatch.delenv("WOOLWORTHS_CATALOGUE_PROXY_URL", raising=False)
+    monkeypatch.delenv("RENDER", raising=False)
+    from shared.models import ProductMatch
+    from woolworths_adapter.client import CatalogueUnavailableError, trip_catalogue_circuit
+
+    adapter = WoolworthsAdapter()
+    adapter.set_search_overrides(
+        {
+            "milk": [
+                ProductMatch(
+                    sku="282848",
+                    product_name="anchor milk",
+                    brand="anchor",
+                    size="2l",
+                    unit_price=3.73,
+                    unit="Each",
+                    in_stock=True,
+                )
+            ]
+        }
+    )
+    with pytest.raises(CatalogueUnavailableError):
+        await trip_catalogue_circuit("forced open")
+
+    calls: list[str] = []
+
+    class BoomClient:
+        def __init__(self, *args, **kwargs):
+            pass
+
+        async def __aenter__(self):
+            return self
+
+        async def __aexit__(self, *args):
+            return None
+
+        async def get(self, url, params=None, headers=None):
+            calls.append(url)
+            raise AssertionError("network should not be used when overrides exist")
+
+    monkeypatch.setattr("httpx.AsyncClient", BoomClient)
+    matches = await adapter.search("milk", limit=2)
+    assert matches[0].sku == "282848"
+    assert calls == []
+
+
+@pytest.mark.asyncio
 async def test_search_public_catalogue_direct_without_proxy(monkeypatch):
     monkeypatch.delenv("WOOLWORTHS_CATALOGUE_PROXY_URL", raising=False)
     monkeypatch.delenv("RENDER", raising=False)

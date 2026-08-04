@@ -17,6 +17,8 @@ npx wrangler deploy
 
 Claim that temporary Cloudflare account (or redeploy under your own account) so the URL stays live, then update `WOOLWORTHS_CATALOGUE_PROXY_URL` if the hostname changes.
 
+**Hosted web** fetches this Worker from the browser (`prefetchCatalogueViaProxy`) and uploads hits to the API — Render often cannot call `workers.dev` itself (CF bot fight → 403).
+
 Verify:
 
 ```
