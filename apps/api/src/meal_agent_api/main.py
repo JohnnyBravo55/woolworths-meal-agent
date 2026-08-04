@@ -182,15 +182,80 @@ def _require_plan(session: AgentSession):
 async def health():
     """Public health check — includes whether OpenAI is configured on this API server."""
     from meal_planner.openai_env import openai_api_key_from_env
+    from woolworths_adapter.client import catalogue_proxy_base_url
 
     load_dotenv(PROJECT_ROOT / ".env", override=True)
     api_key = openai_api_key_from_env()
     model = os.environ.get("OPENAI_MODEL", "gpt-4o-mini").strip() or "gpt-4o-mini"
+    proxy = catalogue_proxy_base_url()
     return {
         "status": "ok",
         "openai_configured": bool(api_key),
         "openai_model": model,
+        "catalogue_proxy_configured": bool(proxy),
+        "catalogue_via": "proxy" if proxy else "direct",
     }
+
+
+@app.get("/api/health/catalogue")
+async def health_catalogue():
+    """Probe Woolworths catalogue reachability (direct or via proxy)."""
+    import httpx
+
+    from woolworths_adapter.client import (
+        WoolworthsAdapter,
+        catalogue_proxy_base_url,
+        is_catalogue_circuit_open,
+        reset_catalogue_circuit_for_tests,
+    )
+
+    proxy = catalogue_proxy_base_url()
+    if proxy and is_catalogue_circuit_open():
+        reset_catalogue_circuit_for_tests()
+
+    proxy_health_status: int | None = None
+    proxy_search_status: int | None = None
+    if proxy:
+        try:
+            async with httpx.AsyncClient(timeout=12.0, follow_redirects=True) as client:
+                h = await client.get(f"{proxy}/health")
+                proxy_health_status = h.status_code
+                s = await client.get(f"{proxy}/search", params={"q": "milk", "size": "1"})
+                proxy_search_status = s.status_code
+        except Exception:  # noqa: BLE001
+            proxy_health_status = -1
+            proxy_search_status = -1
+
+    adapter = WoolworthsAdapter()
+    try:
+        matches = await adapter.search_public_catalogue("milk", limit=1)
+        ok = bool(matches and matches[0].sku and matches[0].sku != "OFFLINE")
+        return {
+            "status": "ok" if ok else "error",
+            "catalogue_ok": ok,
+            "catalogue_via": "proxy" if proxy else "direct",
+            "catalogue_proxy_configured": bool(proxy),
+            "sample_sku": matches[0].sku if matches else None,
+            "circuit_open": is_catalogue_circuit_open(),
+            "proxy_health_status": proxy_health_status,
+            "proxy_search_status": proxy_search_status,
+            "browser_relay_recommended": bool(
+                proxy and proxy_search_status not in (None, 200)
+            ),
+        }
+    except Exception as exc:  # noqa: BLE001 — health must not raise
+        return {
+            "status": "error",
+            "catalogue_ok": False,
+            "catalogue_via": "proxy" if proxy else "direct",
+            "catalogue_proxy_configured": bool(proxy),
+            "sample_sku": None,
+            "circuit_open": is_catalogue_circuit_open(),
+            "proxy_health_status": proxy_health_status,
+            "proxy_search_status": proxy_search_status,
+            "browser_relay_recommended": True,
+            "error": str(exc)[:240],
+        }
 
 
 @app.get("/api/health/openai")
