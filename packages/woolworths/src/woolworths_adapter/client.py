@@ -3,16 +3,9 @@
 from __future__ import annotations
 
 import asyncio
-import os
 from typing import Any
 
 from shared.models import ProductMatch
-
-
-def catalogue_proxy_base_url() -> str | None:
-    """Optional Cloudflare (or other) proxy that can reach Woolworths from cloud hosts."""
-    raw = (os.environ.get("WOOLWORTHS_CATALOGUE_PROXY_URL") or "").strip().rstrip("/")
-    return raw or None
 
 
 class WoolworthsError(Exception):
@@ -267,12 +260,7 @@ class WoolworthsAdapter:
         return matches[:limit]
 
     async def search_public_catalogue(self, query: str, limit: int = 10) -> list[ProductMatch]:
-        """Login-free Woolworths NZ online catalogue search (shop-list pricing).
-
-        When ``WOOLWORTHS_CATALOGUE_PROXY_URL`` is set (e.g. Cloudflare Worker),
-        search goes through that proxy so Render/Akamai-blocked hosts still get
-        live prices.
-        """
+        """Login-free Woolworths NZ online catalogue search (shop-list pricing)."""
         import httpx
 
         if is_catalogue_circuit_open():
@@ -281,36 +269,32 @@ class WoolworthsAdapter:
             )
 
         size = min(max(1, limit), 48)
-        proxy = catalogue_proxy_base_url()
-        if proxy:
-            url = f"{proxy}/search"
-            params = {"q": query, "size": str(size)}
-            headers = {"Accept": "application/json"}
-        else:
-            url = f"{WOOLWORTHS_BASE_URL}/api/v1/products"
-            params = {
-                "target": "search",
-                "search": query,
-                "inStockProductsOnly": "false",
-                "size": str(size),
-            }
-            headers = {
-                "User-Agent": (
-                    "Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 "
-                    "(KHTML, like Gecko) Chrome/120.0.0.0 Safari/537.36"
-                ),
-                "Accept": "application/json",
-                "x-requested-with": "OnlineShopping_Web",
-                "Origin": WOOLWORTHS_BASE_URL,
-                "Referer": f"{WOOLWORTHS_BASE_URL}/",
-            }
+        headers = {
+            "User-Agent": (
+                "Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 "
+                "(KHTML, like Gecko) Chrome/120.0.0.0 Safari/537.36"
+            ),
+            "Accept": "application/json",
+            "x-requested-with": "OnlineShopping_Web",
+            "Origin": WOOLWORTHS_BASE_URL,
+            "Referer": f"{WOOLWORTHS_BASE_URL}/",
+        }
         try:
             # Keep timeouts short — cloud IPs stall on Akamai; shop-resolve fans out queries.
             async with httpx.AsyncClient(
                 timeout=httpx.Timeout(12.0, connect=8.0),
                 follow_redirects=True,
             ) as client:
-                resp = await client.get(url, params=params, headers=headers)
+                resp = await client.get(
+                    f"{WOOLWORTHS_BASE_URL}/api/v1/products",
+                    params={
+                        "target": "search",
+                        "search": query,
+                        "inStockProductsOnly": "false",
+                        "size": str(size),
+                    },
+                    headers=headers,
+                )
                 if resp.status_code in (403, 429):
                     await trip_catalogue_circuit(
                         f"Woolworths catalogue HTTP {resp.status_code}"

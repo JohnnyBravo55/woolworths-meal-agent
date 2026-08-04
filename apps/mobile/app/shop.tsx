@@ -188,7 +188,7 @@ export default function ShopScreen() {
   return (
     <WizardShell scrollable={false}>
       <FlatList
-        style={[styles.list, Platform.OS === "web" ? styles.listWeb : null]}
+        style={styles.list}
         data={rows}
         keyExtractor={(item, i) => `${item.ingredient}-${i}`}
         renderItem={({ item }) => <ShopRow item={item} />}
@@ -203,10 +203,7 @@ export default function ShopScreen() {
                 : "No items in this tab."}
           </Text>
         }
-        contentContainerStyle={[
-          styles.listContent,
-          Platform.OS === "web" ? styles.listContentWeb : null,
-        ]}
+        contentContainerStyle={styles.listContent}
         initialNumToRender={12}
         maxToRenderPerBatch={8}
         windowSize={7}
@@ -219,10 +216,7 @@ export default function ShopScreen() {
 
 const styles = StyleSheet.create({
   list: { flex: 1 },
-  // RN-web: reserve scrollbar gutter so qty/price is not painted under the thumb.
-  listWeb: { scrollbarGutter: "stable" } as object,
   listContent: { paddingBottom: 160 },
-  listContentWeb: { paddingRight: 20 },
   summary: { fontSize: 14, color: theme.text, marginBottom: 8 },
   banner: {
     marginTop: 12,
@@ -245,11 +239,11 @@ const styles = StyleSheet.create({
     borderBottomColor: theme.border,
     gap: 8,
   },
-  rowMain: { flex: 1, minWidth: 0 },
+  rowMain: { flex: 1 },
   ing: { fontWeight: "600", color: theme.text },
   prod: { fontSize: 12, color: theme.textMuted, marginTop: 2 },
   block: { fontSize: 11, color: theme.red, marginTop: 4 },
-  price: { fontSize: 13, color: theme.text, fontWeight: "600", flexShrink: 0 },
+  price: { fontSize: 13, color: theme.text, fontWeight: "600" },
   empty: { color: theme.textMuted, padding: 16 },
   suggestion: { fontSize: 13, color: theme.text, marginBottom: 4 },
   footerCard: { marginTop: 16 },
