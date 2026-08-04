@@ -73,59 +73,8 @@ async def test_search_public_catalogue_uses_proxy_url(monkeypatch):
 
 
 @pytest.mark.asyncio
-async def test_search_public_catalogue_defaults_proxy_on_render(monkeypatch):
-    monkeypatch.delenv("WOOLWORTHS_CATALOGUE_PROXY_URL", raising=False)
-    monkeypatch.setenv("RENDER", "true")
-    calls: list[tuple[str, dict | None]] = []
-
-    class FakeResp:
-        status_code = 200
-
-        def raise_for_status(self) -> None:
-            return None
-
-        def json(self) -> dict:
-            return {
-                "products": {
-                    "items": [
-                        {
-                            "type": "Product",
-                            "name": "milk",
-                            "sku": "1",
-                            "brand": "x",
-                            "price": {"originalPrice": 1, "salePrice": 1},
-                            "unit": "Each",
-                            "size": {},
-                            "availabilityStatus": "In Stock",
-                        }
-                    ]
-                }
-            }
-
-    class FakeClient:
-        def __init__(self, *args, **kwargs):
-            pass
-
-        async def __aenter__(self):
-            return self
-
-        async def __aexit__(self, *args):
-            return None
-
-        async def get(self, url, params=None, headers=None):
-            calls.append((url, params))
-            return FakeResp()
-
-    monkeypatch.setattr("httpx.AsyncClient", FakeClient)
-    await WoolworthsAdapter().search_public_catalogue("milk", limit=1)
-    assert calls[0][0].endswith("/search")
-    assert "workers.dev" in calls[0][0]
-
-
-@pytest.mark.asyncio
 async def test_search_public_catalogue_direct_without_proxy(monkeypatch):
     monkeypatch.delenv("WOOLWORTHS_CATALOGUE_PROXY_URL", raising=False)
-    monkeypatch.delenv("RENDER", raising=False)
     calls: list[str] = []
 
     class FakeResp:
